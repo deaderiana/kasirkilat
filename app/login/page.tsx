@@ -20,7 +20,7 @@ export default function LoginPage() {
     if (isRegister) {
       const { error } = await supabase.auth.signUp({ email, password });
       if (error) alert("Gagal Daftar: " + error.message);
-      else { alert("Pendaftaran Berhasil! Silakan Login."); setIsRegister(false); }
+      else { alert("Pendaftaran Berhasil! Silakan Cek Email."); setIsRegister(false); }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) alert("Gagal Login: " + error.message);
