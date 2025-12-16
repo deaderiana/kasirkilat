@@ -22,7 +22,7 @@ export default function CashierPage() {
   // --- SECURITY & MENU STATE ---
   const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
-  const [showMainMenu, setShowMainMenu] = useState(false); // NEW: State untuk Menu 3 Garis
+  const [showMainMenu, setShowMainMenu] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [savedPin, setSavedPin] = useState('');
 
@@ -206,8 +206,8 @@ export default function CashierPage() {
           router.push('/admin');
       } else {
           setPinInput('');
-          setShowMainMenu(false); // Tutup menu utama
-          setShowPinModal(true);  // Buka modal PIN
+          setShowMainMenu(false); 
+          setShowPinModal(true);  
       }
   };
 
@@ -234,7 +234,7 @@ export default function CashierPage() {
       <div className="flex-1 flex flex-col h-full relative">
         <header className="bg-white p-4 border-b border-gray-200 flex justify-between items-center z-10">
           <div className="flex items-center gap-3">
-             {/* TOMBOL MENU UTAMA (3 GARIS) - SEKARANG MEMBUKA MENU DROPDOWN */}
+             {/* TOMBOL MENU UTAMA (3 GARIS) */}
              <button onClick={() => setShowMainMenu(true)} className="p-2 hover:bg-gray-100 rounded-lg text-gray-800 transition">
                  <Menu size={24}/>
              </button>
@@ -262,13 +262,10 @@ export default function CashierPage() {
         </div>
       </div>
 
-      {/* --- MENU UTAMA MODAL (POPUP 3 GARIS) --- */}
+      {/* --- MENU UTAMA MODAL (POPUP 3 GARIS) - NOW FROM LEFT --- */}
       {showMainMenu && (
-          <div className="fixed inset-0 bg-black/60 z-[100] flex justify-end">
-              {/* Tutup jika klik area gelap */}
-              <div className="flex-1" onClick={()=>setShowMainMenu(false)}></div>
-              
-              <div className="bg-white w-64 h-full shadow-2xl p-6 flex flex-col animate-in slide-in-from-right duration-300">
+          <div className="fixed inset-0 bg-black/60 z-[100] flex justify-start"> {/* Align Left */}
+              <div className="bg-white w-64 h-full shadow-2xl p-6 flex flex-col animate-in slide-in-from-left duration-300"> {/* Slide from Left */}
                   <div className="flex justify-between items-center mb-8">
                       <h2 className="font-bold text-xl">Menu</h2>
                       <button onClick={()=>setShowMainMenu(false)} className="p-2 hover:bg-gray-100 rounded-full"><X size={24}/></button>
@@ -314,6 +311,9 @@ export default function CashierPage() {
                       <p className="text-[10px] text-center text-gray-300 mt-4">Versi 1.0.0</p>
                   </div>
               </div>
+              
+              {/* Tutup jika klik area gelap (OVERLAY) */}
+              <div className="flex-1" onClick={()=>setShowMainMenu(false)}></div>
           </div>
       )}
 
