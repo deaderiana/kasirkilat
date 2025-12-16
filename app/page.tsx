@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { 
   Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, 
   Menu, Loader2, User, Users, X, Save, TrendingUp, Lock, Wallet, Percent, Gift, Key, QrCode, Banknote, LogOut, LayoutDashboard, Crown, ChevronRight, Zap
@@ -109,7 +108,7 @@ export default function CashierPage() {
   const removeFromCart = (productId: number) => { setCart(prev => prev.filter(item => item.id !== productId)); setPaymentAmount(''); setChange(0); };
   const updateQty = (productId: number, delta: number) => { setCart(prev => prev.map(item => { if (item.id === productId) { const newQty = item.qty + delta; return newQty > 0 ? { ...item, qty: newQty } : item; } return item; })); setPaymentAmount(''); setChange(0); };
 
-  // --- CALCULATIONS ---
+  // --- CALCULATIONS (PERBAIKAN LOGIKA DISINI) ---
   const subTotal = cart.reduce((acc, item) => acc + (item.price * item.qty), 0);
   const discountRate = Math.min(100, Math.max(0, Number(discountPercent) || 0));
   const discountValue = Math.floor((subTotal * discountRate) / 100);
@@ -117,6 +116,10 @@ export default function CashierPage() {
   const taxValue = Math.floor(taxableAmount * (taxRate / 100));
   const grandTotal = taxableAmount + taxValue;
   const potentialPoints = Math.floor(grandTotal / POINT_RATE);
+  
+  // Hitung Total Modal (HPP) untuk margin
+  const totalCost = cart.reduce((acc, item) => acc + ((item.buy_price || 0) * item.qty), 0);
+  const marginValue = subTotal - totalCost - discountValue;
 
   // --- PAYMENT LOGIC ---
   const handleQuickPay = (amount: number) => { setPaymentAmount(amount.toString()); setChange(amount - grandTotal); };
@@ -124,6 +127,7 @@ export default function CashierPage() {
   const handleDiscountInput = (val: string) => { 
       let num = Number(val); if (num > 100) num = 100; if (num < 0) num = 0;
       setDiscountPercent(val); 
+      // Recalc change
       const newDiscVal = Math.floor((subTotal * num) / 100);
       const newTaxable = Math.max(0, subTotal - newDiscVal);
       const newTax = Math.floor(newTaxable * (taxRate / 100));
@@ -200,124 +204,131 @@ export default function CashierPage() {
       else { if (!newCustomerForm.name || (sendWaAfterSave && !newCustomerForm.phone)) return alert("Nama pelanggan wajib diisi!"); const { data, error } = await supabase.from('customers').insert([{ user_id: user.id, name: newCustomerForm.name, phone: newCustomerForm.phone || '-', points: 0 }]).select().single(); if (error) return alert("Gagal: " + error.message); processTransaction(newCustomerForm.phone || '', newCustomerForm.name, data.id); setCustomers(prev => [...prev, data]); }
   };
 
-  // --- NEW: MENU NAVIGATION LOGIC ---
-  const handleAdminClick = () => {
-      if (isAdminUnlocked) {
-          router.push('/admin');
-      } else {
-          setPinInput('');
-          setShowMainMenu(false); 
-          setShowPinModal(true);  
-      }
-  };
-
-  const handleUpgradeClick = () => {
-      const ownerPhone = "6282177771224";
-      const message = "Halo Admin, saya ingin upgrade ke akun *PRO PLAN*. Mohon infonya.";
-      window.open(`https://wa.me/${ownerPhone}?text=${encodeURIComponent(message)}`, '_blank');
-  };
-
-  const handleLogout = async () => { 
-      await supabase.auth.signOut(); 
-      sessionStorage.clear();
-      router.push('/login'); 
-  };
-
+  const handleAdminClick = () => { if (isAdminUnlocked) { router.push('/admin'); } else { setPinInput(''); setShowMainMenu(false); setShowPinModal(true); } };
+  const handleUpgradeClick = () => { window.open(`https://wa.me/6281234567890?text=${encodeURIComponent("Halo, saya ingin upgrade PRO.")}`, '_blank'); };
+  const handleLogout = async () => { await supabase.auth.signOut(); sessionStorage.clear(); router.push('/login'); };
   const handlePinSubmit = (e: React.FormEvent) => { e.preventDefault(); if (pinInput === savedPin) { sessionStorage.setItem('is_admin_unlocked', 'true'); setIsAdminUnlocked(true); setShowPinModal(false); router.push('/admin'); } else alert("PIN Salah!"); };
 
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-emerald-600" size={40}/></div>;
 
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-gray-50 font-sans font-inter text-gray-800 overflow-hidden">
+    <div className="flex flex-col md:flex-row h-screen bg-gray-50 font-sans font-inter text-gray-800 overflow-hidden relative">
       
       {/* HEADER & PRODUK (KIRI) */}
-      <div className="flex-1 flex flex-col h-full relative">
-        <header className="bg-white p-4 border-b border-gray-200 flex justify-between items-center z-10">
-          <div className="flex items-center gap-3">
-             {/* TOMBOL MENU UTAMA (3 GARIS) */}
-             <button onClick={() => setShowMainMenu(true)} className="p-2 hover:bg-gray-100 rounded-lg text-gray-800 transition">
-                 <Menu size={24}/>
-             </button>
-             <Logo />
+      <div className="flex-1 flex flex-col h-full relative z-0">
+        <header className="bg-white p-3 border-b border-gray-200 flex items-center gap-3 shadow-sm z-10 sticky top-0">
+          <button onClick={() => setShowMainMenu(true)} className="p-2 hover:bg-gray-100 rounded-lg text-gray-800 transition flex-shrink-0">
+             <Menu size={24}/>
+          </button>
+          <div className="hidden sm:block"><Logo /></div>
+          
+          <div className="relative flex-1">
+              <Search className="absolute left-3 top-2.5 text-gray-400" size={18}/>
+              <input 
+                type="text" 
+                placeholder="Cari produk..." 
+                value={searchQuery} 
+                onChange={e => setSearchQuery(e.target.value)} 
+                className="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition text-sm"
+              />
           </div>
-          <div className="relative w-full max-w-xs md:max-w-md ml-4"><Search className="absolute left-3 top-2.5 text-gray-400" size={18}/><input type="text" placeholder="Cari produk..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition text-sm"/></div>
         </header>
-        <div className="bg-white px-4 py-3 border-b border-gray-200 overflow-x-auto whitespace-nowrap scrollbar-hide"><div className="flex gap-2">{categories.map(cat => (<button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold transition ${activeCategory === cat ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>{cat}</button>))}</div></div>
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6"><div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">{filteredProducts.map(product => (<div key={product.id} onClick={() => addToCart(product)} className="bg-white rounded-2xl p-3 border border-gray-100 shadow-sm hover:shadow-md hover:border-emerald-400 cursor-pointer transition flex flex-col h-full group"><div className="bg-gray-100 rounded-xl h-32 w-full mb-3 overflow-hidden relative"><img src={product.image || "https://via.placeholder.com/150"} className="w-full h-full object-cover group-hover:scale-110 transition duration-300"/><div className="absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-1.5 rounded backdrop-blur">Stok: {product.stock}</div></div><h3 className="font-bold text-gray-800 text-sm line-clamp-2 mb-1 flex-1">{product.name}</h3><div className="flex justify-between items-center mt-2"><span className="text-emerald-600 font-extrabold text-sm">Rp {product.price.toLocaleString()}</span><div className="bg-gray-900 text-white p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition shadow-lg"><Plus size={14}/></div></div></div>))}</div></div>
-      </div>
 
-      {/* KERANJANG (KANAN) */}
-      <div className="bg-white w-full md:w-96 border-l border-gray-200 flex flex-col h-[40vh] md:h-full absolute bottom-0 md:static shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none z-20 rounded-t-3xl md:rounded-none">
-        <div className="p-5 border-b border-gray-100 flex justify-between items-center"><h2 className="font-bold text-lg flex items-center gap-2"><ShoppingCart className="text-emerald-600"/> Keranjang</h2><span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-1 rounded-lg">{cart.length} Item</span></div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">{cart.length === 0 ? (<div className="flex flex-col items-center justify-center h-full text-gray-400 text-sm"><ShoppingCart size={48} className="mb-2 opacity-20"/><p>Belum ada item</p></div>) : (cart.map(item => (<div key={item.id} className="flex gap-3 items-center"><div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0"><img src={item.image || "https://via.placeholder.com/150"} className="w-full h-full object-cover"/></div><div className="flex-1"><h4 className="font-bold text-sm text-gray-800 line-clamp-1">{item.name}</h4><p className="text-xs text-gray-500">Rp {item.price.toLocaleString()}</p></div><div className="flex items-center gap-3 bg-gray-50 rounded-lg p-1"><button onClick={()=>updateQty(item.id, -1)} className="w-6 h-6 flex items-center justify-center bg-white rounded shadow-sm text-gray-600 hover:text-red-500"><Minus size={12}/></button><span className="text-xs font-bold w-4 text-center">{item.qty}</span><button onClick={()=>updateQty(item.id, 1)} className="w-6 h-6 flex items-center justify-center bg-white rounded shadow-sm text-gray-600 hover:text-emerald-600"><Plus size={12}/></button></div><button onClick={()=>removeFromCart(item.id)} className="text-red-300 hover:text-red-500"><Trash2 size={16}/></button></div>)))}</div>
+        <div className="bg-white px-4 py-3 border-b border-gray-200 overflow-x-auto whitespace-nowrap scrollbar-hide">
+            <div className="flex gap-2">
+                {categories.map(cat => (<button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-bold transition ${activeCategory === cat ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>{cat}</button>))}
+            </div>
+        </div>
 
-        <div className="p-4 bg-gray-50 border-t border-gray-200 space-y-3">
-            {isPro && isAdminUnlocked && cart.length > 0 && (<div className="bg-emerald-50 border border-emerald-100 p-3 rounded-xl"><div className="flex justify-between items-center cursor-pointer" onClick={() => setShowProfit(!showProfit)}><span className="text-xs font-bold text-emerald-800 flex items-center gap-1"><TrendingUp size={14}/> Potensi Keuntungan</span><span className="text-xs text-emerald-600 underline">{showProfit ? 'Sembunyikan' : 'Lihat'}</span></div>{showProfit && (<div className="mt-2 text-sm">{(() => { const totalModal = cart.reduce((acc, item) => acc + ((item.buy_price || 0) * item.qty), 0); const untung = subTotal - totalModal - discountValue; return (<div className="flex justify-between font-bold text-emerald-700"><span>Margin:</span><span>+ Rp {untung.toLocaleString()}</span></div>)})()}</div>)}</div>)}
-            {cart.length > 0 && (<div className="flex justify-between items-center gap-2"><label className="text-xs font-bold text-gray-500 flex items-center gap-1"><Percent size={12}/> Diskon (%)</label><input type="number" max={100} value={discountPercent} onChange={e => handleDiscountInput(e.target.value)} className="w-16 p-1.5 border border-gray-300 rounded-lg text-xs font-bold text-right outline-none focus:border-emerald-500 text-red-500" placeholder="0"/></div>)}
-            <div className="space-y-1">{(discountValue > 0 || taxValue > 0) && (<div className="flex justify-between items-center text-xs text-gray-500"><span>Subtotal</span><span>Rp {subTotal.toLocaleString()}</span></div>)}{discountValue > 0 && (<div className="flex justify-between items-center text-xs text-red-500"><span>Diskon ({discountRate}%)</span><span>- Rp {discountValue.toLocaleString()}</span></div>)}{taxValue > 0 && (<div className="flex justify-between items-center text-xs text-gray-500"><span>Pajak ({taxRate}%)</span><span>+ Rp {taxValue.toLocaleString()}</span></div>)}<div className="flex justify-between items-center"><span className="text-gray-500 text-sm font-medium">Total Tagihan</span><span className="text-xl font-extrabold text-gray-900">Rp {grandTotal.toLocaleString()}</span></div>{isPro && potentialPoints > 0 && (<div className="flex justify-end items-center gap-1 text-[10px] text-blue-600 font-bold"><Gift size={10}/> Mendapatkan +{potentialPoints} Poin</div>)}</div>
-            {isPro ? ( <div className="space-y-2 border-t pt-2 border-dashed border-gray-300"><div className="flex justify-between items-center"><label className="text-xs font-bold text-gray-500">Pembayaran</label><span className="text-[10px] bg-gray-200 px-2 rounded text-gray-600 font-bold">PRO</span></div><div className="flex gap-2 mb-2 overflow-x-auto pb-1 scrollbar-hide"> {[10000, 20000, 50000, 100000].map(amt => (<button key={amt} onClick={() => handleQuickPay(amt)} className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs font-bold hover:bg-gray-100 hover:border-gray-400 whitespace-nowrap shadow-sm transition">{amt / 1000}k</button>))} </div><div className="relative"><Wallet className="absolute left-3 top-3 text-gray-400" size={16}/><input type="number" value={paymentAmount} onChange={e => handlePaymentInput(e.target.value)} placeholder="Nominal diterima..." className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none"/></div>{Number(paymentAmount) > 0 && (<div className={`flex justify-between font-bold p-2 rounded-lg text-sm ${change >= 0 ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-700'}`}><span>{change >= 0 ? 'Kembalian' : 'Kurang'}</span><span>Rp {Math.abs(change).toLocaleString()}</span></div>)}</div>) : (<div onClick={() => alert("Upgrade Pro untuk fitur Hitung Kembalian & Quick Pay!")} className="p-3 bg-gray-100 rounded-xl border border-dashed border-gray-300 text-center cursor-pointer hover:bg-gray-200 transition"><p className="text-xs text-gray-400 font-bold flex items-center justify-center gap-1"><Lock size={12}/> Hitung Kembalian (PRO)</p></div>)}
-            {isPro && (<div className="grid grid-cols-3 gap-2"><button onClick={()=>setPaymentMethod('CASH')} className={`py-2 rounded-lg text-xs font-bold border flex flex-col items-center justify-center gap-1 ${paymentMethod==='CASH'?'bg-emerald-600 text-white border-emerald-600':'bg-white text-gray-500 border-gray-200'}`}><Wallet size={16}/> Tunai</button><button onClick={()=>setPaymentMethod('TRANSFER')} className={`py-2 rounded-lg text-xs font-bold border flex flex-col items-center justify-center gap-1 ${paymentMethod==='TRANSFER'?'bg-blue-600 text-white border-blue-600':'bg-white text-gray-500 border-gray-200'}`}><Banknote size={16}/> Transfer</button><button onClick={()=>setPaymentMethod('QRIS')} className={`py-2 rounded-lg text-xs font-bold border flex flex-col items-center justify-center gap-1 ${paymentMethod==='QRIS'?'bg-purple-600 text-white border-purple-600':'bg-white text-gray-500 border-gray-200'}`}><QrCode size={16}/> QRIS</button></div>)}
-            <div className="flex gap-3 pt-2"><button onClick={()=>handleCheckoutClick(false)} className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl flex items-center justify-center gap-2 border border-gray-300">{isSubmitting ? <Loader2 className="animate-spin"/> : <Save size={18}/>} Terima Pembayaran</button><button onClick={()=>handleCheckoutClick(true)} className="flex-1 py-3 bg-gray-900 hover:bg-black text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg">{isSubmitting ? <Loader2 className="animate-spin"/> : <CreditCard size={18}/>} Simpan & Kirim WA</button></div>
-            {!isPro && (<p className="text-[10px] text-center text-gray-400 mt-2 flex items-center justify-center gap-1"><User size={10}/> Upgrade Pro untuk simpan data pelanggan otomatis</p>)}
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-48 md:pb-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+                {filteredProducts.map(product => (
+                    <div key={product.id} onClick={() => addToCart(product)} className="bg-white rounded-2xl p-2 md:p-3 border border-gray-100 shadow-sm hover:shadow-md cursor-pointer transition flex flex-col h-full group active:scale-95 duration-100">
+                        <div className="bg-gray-100 rounded-xl h-28 md:h-32 w-full mb-2 md:mb-3 overflow-hidden relative">
+                            <img src={product.image || "https://via.placeholder.com/150"} className="w-full h-full object-cover"/>
+                            <div className="absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-1.5 rounded backdrop-blur">Stok: {product.stock}</div>
+                        </div>
+                        <h3 className="font-bold text-gray-800 text-xs md:text-sm line-clamp-2 mb-1 flex-1 leading-tight">{product.name}</h3>
+                        <div className="flex justify-between items-center mt-1">
+                            <span className="text-emerald-600 font-extrabold text-xs md:text-sm">Rp {product.price.toLocaleString()}</span>
+                            <div className="bg-gray-900 text-white p-1 rounded-lg"><Plus size={12}/></div>
+                        </div>
+                    </div>
+                ))}
+            </div>
         </div>
       </div>
 
-      {/* --- MENU UTAMA MODAL (POPUP 3 GARIS) - NOW FROM LEFT --- */}
+      {/* KERANJANG (KANAN / BAWAH) */}
+      <div className="bg-white w-full md:w-96 border-t md:border-l border-gray-200 flex flex-col h-auto md:h-full absolute bottom-0 md:static shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none z-30 rounded-t-3xl md:rounded-none max-h-[85vh] transition-all duration-300">
+        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-white rounded-t-3xl md:rounded-none sticky top-0 z-20">
+            <h2 className="font-bold text-lg flex items-center gap-2"><ShoppingCart className="text-emerald-600"/> Keranjang</h2>
+            <span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-1 rounded-lg">{cart.length} Item</span>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-[100px]">
+            {cart.length === 0 ? (<div className="flex flex-col items-center justify-center h-20 md:h-full text-gray-400 text-sm"><p>Keranjang Kosong</p></div>) : (cart.map(item => (
+                <div key={item.id} className="flex gap-3 items-center">
+                    <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0"><img src={item.image || "https://via.placeholder.com/150"} className="w-full h-full object-cover"/></div>
+                    <div className="flex-1 min-w-0"><h4 className="font-bold text-sm text-gray-800 line-clamp-1">{item.name}</h4><p className="text-xs text-gray-500">Rp {item.price.toLocaleString()}</p></div>
+                    <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-1"><button onClick={()=>updateQty(item.id, -1)} className="w-6 h-6 flex items-center justify-center bg-white rounded shadow-sm text-gray-600"><Minus size={12}/></button><span className="text-xs font-bold w-4 text-center">{item.qty}</span><button onClick={()=>updateQty(item.id, 1)} className="w-6 h-6 flex items-center justify-center bg-white rounded shadow-sm text-gray-600"><Plus size={12}/></button></div><button onClick={()=>removeFromCart(item.id)} className="text-red-300 hover:text-red-500"><Trash2 size={16}/></button>
+                </div>
+            )))}
+        </div>
+
+        <div className="p-4 bg-gray-50 border-t border-gray-200 space-y-3 pb-6 md:pb-4 safe-area-pb">
+            {/* 1. PROFIT (FIXED ERROR) */}
+            {isPro && isAdminUnlocked && cart.length > 0 && (
+                <div className="bg-emerald-50 border border-emerald-100 p-2 rounded-lg flex justify-between items-center text-xs">
+                    <span className="font-bold text-emerald-800 flex items-center gap-1"><TrendingUp size={12}/> Margin</span>
+                    <span className="font-bold text-emerald-600">Rp {marginValue.toLocaleString()}</span>
+                </div>
+            )}
+
+            {/* 2. DISKON */}
+            {cart.length > 0 && (<div className="flex justify-between items-center gap-2"><label className="text-xs font-bold text-gray-500 flex items-center gap-1"><Percent size={12}/> Diskon (%)</label><input type="number" max={100} value={discountPercent} onChange={e => handleDiscountInput(e.target.value)} className="w-16 p-1.5 border border-gray-300 rounded-lg text-xs font-bold text-right outline-none focus:border-emerald-500 text-red-500" placeholder="0"/></div>)}
+
+            {/* 3. TOTAL (FIXED ERROR - CLEAN VARS) */}
+            <div className="space-y-1">
+                {(discountValue > 0 || taxValue > 0) && (<div className="flex justify-between items-center text-xs text-gray-500"><span>Subtotal</span><span>Rp {subTotal.toLocaleString()}</span></div>)}
+                <div className="flex justify-between items-center"><span className="text-gray-500 text-sm font-medium">Total Tagihan</span><span className="text-xl font-extrabold text-gray-900">Rp {grandTotal.toLocaleString()}</span></div>
+            </div>
+
+            {/* 4. PAYMENT & BUTTONS */}
+            {isPro && (
+                <>
+                    <div className="grid grid-cols-3 gap-2">
+                        <button onClick={()=>setPaymentMethod('CASH')} className={`py-1.5 rounded-lg text-[10px] font-bold border flex flex-col items-center justify-center gap-0.5 ${paymentMethod==='CASH'?'bg-emerald-600 text-white border-emerald-600':'bg-white text-gray-500 border-gray-200'}`}><Wallet size={14}/> Tunai</button>
+                        <button onClick={()=>setPaymentMethod('TRANSFER')} className={`py-1.5 rounded-lg text-[10px] font-bold border flex flex-col items-center justify-center gap-0.5 ${paymentMethod==='TRANSFER'?'bg-blue-600 text-white border-blue-600':'bg-white text-gray-500 border-gray-200'}`}><Banknote size={14}/> Transfer</button>
+                        <button onClick={()=>setPaymentMethod('QRIS')} className={`py-1.5 rounded-lg text-[10px] font-bold border flex flex-col items-center justify-center gap-0.5 ${paymentMethod==='QRIS'?'bg-purple-600 text-white border-purple-600':'bg-white text-gray-500 border-gray-200'}`}><QrCode size={14}/> QRIS</button>
+                    </div>
+                    <div className="relative">
+                        <Wallet className="absolute left-3 top-3 text-gray-400" size={16}/>
+                        <input type="number" value={paymentAmount} onChange={e => handlePaymentInput(e.target.value)} placeholder="Nominal..." className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none"/>
+                        {Number(paymentAmount) > 0 && (<span className={`absolute right-3 top-2.5 text-xs font-bold ${change >= 0 ? 'text-blue-600' : 'text-red-500'}`}>{change >= 0 ? 'Kembali' : 'Kurang'} Rp {Math.abs(change).toLocaleString()}</span>)}
+                    </div>
+                </>
+            )}
+            
+            <div className="flex gap-2">
+                <button onClick={()=>handleCheckoutClick(false)} className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl flex items-center justify-center gap-2 border border-gray-300 text-sm">{isSubmitting ? <Loader2 className="animate-spin"/> : <Save size={16}/>} Simpan</button>
+                <button onClick={()=>handleCheckoutClick(true)} className="flex-[2] py-3 bg-gray-900 hover:bg-black text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg text-sm">{isSubmitting ? <Loader2 className="animate-spin"/> : <CreditCard size={16}/>} Bayar & WA</button>
+            </div>
+        </div>
+      </div>
+
+      {/* --- MENU & MODALS SAMA SEPERTI SEBELUMNYA --- */}
       {showMainMenu && (
-          <div className="fixed inset-0 bg-black/60 z-[100] flex justify-start"> {/* Align Left */}
-              <div className="bg-white w-64 h-full shadow-2xl p-6 flex flex-col animate-in slide-in-from-left duration-300"> {/* Slide from Left */}
-                  <div className="flex justify-between items-center mb-8">
-                      <h2 className="font-bold text-xl">Menu</h2>
-                      <button onClick={()=>setShowMainMenu(false)} className="p-2 hover:bg-gray-100 rounded-full"><X size={24}/></button>
-                  </div>
-
-                  {/* INFO USER */}
-                  <div className="mb-6 p-4 bg-gray-50 rounded-2xl border border-gray-100">
-                      <div className="flex items-center gap-3 mb-2">
-                          <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center"><User size={20} className="text-gray-500"/></div>
-                          <div>
-                              <p className="font-bold text-sm text-gray-900 line-clamp-1">{user?.email?.split('@')[0]}</p>
-                              <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${isPro ? 'bg-orange-100 text-orange-600' : 'bg-gray-200 text-gray-500'}`}>{isPro ? 'PRO PLAN' : 'FREE PLAN'}</span>
-                          </div>
-                      </div>
-                  </div>
-
-                  {/* MENU LIST */}
-                  <div className="space-y-2 flex-1">
-                      {/* 1. ADMIN DASHBOARD */}
-                      <button onClick={handleAdminClick} className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition border border-transparent hover:border-gray-200">
-                          <div className="flex items-center gap-3 font-bold text-gray-700">
-                              <LayoutDashboard size={20} className="text-emerald-600"/> Dashboard Admin
-                          </div>
-                          {isAdminUnlocked ? <ChevronRight size={16} className="text-gray-400"/> : <Lock size={14} className="text-gray-400"/>}
-                      </button>
-
-                      {/* 2. UPGRADE PRO (Jika Free) */}
-                      {!isPro && (
-                          <button onClick={handleUpgradeClick} className="w-full flex items-center justify-between p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-100 hover:shadow-sm transition">
-                              <div className="flex items-center gap-3 font-bold text-orange-700">
-                                  <Crown size={20}/> Upgrade PRO
-                              </div>
-                              <Zap size={16} className="text-orange-400 animate-pulse"/>
-                          </button>
-                      )}
-                  </div>
-
-                  {/* LOGOUT */}
-                  <div className="border-t border-gray-100 pt-4">
-                      <button onClick={handleLogout} className="w-full flex items-center gap-3 p-3 rounded-xl text-red-500 font-bold hover:bg-red-50 transition">
-                          <LogOut size={20}/> Keluar Aplikasi
-                      </button>
-                      <p className="text-[10px] text-center text-gray-300 mt-4">Versi 1.0.0</p>
-                  </div>
+          <div className="fixed inset-0 bg-black/60 z-[100] flex justify-start">
+              <div className="bg-white w-72 h-full shadow-2xl p-6 flex flex-col animate-in slide-in-from-left duration-300">
+                  <div className="flex justify-between items-center mb-8"><h2 className="font-bold text-xl text-gray-800">Menu Utama</h2><button onClick={()=>setShowMainMenu(false)} className="p-2 hover:bg-gray-100 rounded-full"><X size={24}/></button></div>
+                  <div className="mb-6 p-4 bg-gray-50 rounded-2xl border border-gray-100"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-500"><User size={20}/></div><div><p className="font-bold text-sm text-gray-900 line-clamp-1">{user?.email?.split('@')[0]}</p><span className={`text-[10px] px-2 py-0.5 rounded font-bold ${isPro ? 'bg-orange-100 text-orange-600' : 'bg-gray-200 text-gray-500'}`}>{isPro ? 'PRO PLAN' : 'FREE PLAN'}</span></div></div></div>
+                  <div className="space-y-2 flex-1"><button onClick={handleAdminClick} className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition border border-transparent hover:border-gray-200"><div className="flex items-center gap-3 font-bold text-gray-700"><LayoutDashboard size={20} className="text-emerald-600"/> Dashboard Admin</div>{isAdminUnlocked ? <ChevronRight size={16} className="text-gray-400"/> : <Lock size={14} className="text-gray-400"/>}</button>{!isPro && (<button onClick={handleUpgradeClick} className="w-full flex items-center justify-between p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-100 hover:shadow-sm transition"><div className="flex items-center gap-3 font-bold text-orange-700"><Crown size={20}/> Upgrade PRO</div><Zap size={16} className="text-orange-400 animate-pulse"/></button>)}</div>
+                  <div className="border-t border-gray-100 pt-4"><button onClick={handleLogout} className="w-full flex items-center gap-3 p-3 rounded-xl text-red-500 font-bold hover:bg-red-50 transition"><LogOut size={20}/> Keluar Aplikasi</button><p className="text-[10px] text-center text-gray-300 mt-4">Versi 1.0.0</p></div>
               </div>
-              
-              {/* Tutup jika klik area gelap (OVERLAY) */}
               <div className="flex-1" onClick={()=>setShowMainMenu(false)}></div>
           </div>
       )}
-
-      {/* --- MODALS LAINNYA (SAMA) --- */}
       {showPinModal && (<div className="fixed inset-0 bg-black/60 z-[100] flex justify-center items-center p-4 backdrop-blur-sm"><div className="bg-white w-full max-w-xs p-6 rounded-2xl shadow-2xl relative text-center"><div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600"><Lock size={24}/></div><h3 className="font-bold text-lg text-gray-800">Mode Kasir Aktif</h3><p className="text-sm text-gray-500 mb-4">Masukkan PIN Admin untuk membuka menu.</p><form onSubmit={handlePinSubmit}><input type="password" autoFocus maxLength={6} value={pinInput} onChange={e => setPinInput(e.target.value)} className="w-full p-3 bg-gray-100 rounded-xl text-center font-bold text-xl tracking-widest outline-emerald-500 mb-4" placeholder="••••••"/><div className="flex gap-2"><button type="button" onClick={()=>setShowPinModal(false)} className="flex-1 py-2 bg-gray-200 text-gray-600 font-bold rounded-xl">Batal</button><button type="submit" className="flex-1 py-2 bg-gray-900 text-white font-bold rounded-xl">Buka</button></div></form></div></div>)}
       {showCustomerModal && (<div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-center p-4 backdrop-blur-sm"><div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"><div className="p-5 border-b bg-gray-50 flex justify-between items-center"><div><h3 className="font-bold text-lg flex items-center gap-2 text-gray-800"><Users className="text-emerald-600"/> Pilih Pelanggan</h3><p className="text-xs text-gray-500">Database Pelanggan & Poin</p></div><button onClick={()=>setShowCustomerModal(false)} className="bg-gray-200 p-1.5 rounded-full hover:bg-gray-300"><X size={18}/></button></div><div className="p-5 overflow-y-auto"><div className="mb-6"><label className="text-xs font-bold text-gray-500 mb-2 block">Cari Pelanggan Lama</label><div className="relative"><Search className="absolute left-3 top-3 text-gray-400" size={16}/><input type="text" placeholder="Ketik nama / no WA..." value={customerSearch} onChange={e => {setCustomerSearch(e.target.value); setSelectedCustomer(null);}} className="w-full pl-9 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"/></div>{customerSearch && (<div className="mt-2 border border-gray-100 rounded-xl max-h-40 overflow-y-auto shadow-sm">{customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone.includes(customerSearch)).map(c => (<div key={c.id} onClick={()=>{ setSelectedCustomer(c); setCustomerSearch(c.name); }} className="p-3 hover:bg-emerald-50 cursor-pointer border-b border-gray-50 last:border-0 flex justify-between items-center"><div><p className="font-bold text-sm text-gray-800">{c.name}</p><p className="text-xs text-gray-500">{c.phone}</p></div><div className="text-right"><span className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-500 block mb-1">{c.total_transactions}x Belanja</span><span className="text-[10px] text-blue-600 font-bold flex items-center gap-1 justify-end"><Gift size={8}/> {c.points || 0} Poin</span></div></div>))}</div>)}</div><div className="flex items-center gap-3 mb-6"><div className="h-px bg-gray-200 flex-1"></div><span className="text-xs text-gray-400 font-bold">ATAU INPUT BARU</span><div className="h-px bg-gray-200 flex-1"></div></div><div className={`space-y-3 transition ${selectedCustomer ? 'opacity-50 pointer-events-none grayscale' : ''}`}><div><label className="text-xs font-bold text-gray-500">Nama Pelanggan Baru</label><input type="text" value={newCustomerForm.name} onChange={e=>setNewCustomerForm({...newCustomerForm, name: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium" placeholder="Contoh: Budi Santoso"/></div><div><label className="text-xs font-bold text-gray-500">Nomor WhatsApp</label><input type="number" value={newCustomerForm.phone} onChange={e=>setNewCustomerForm({...newCustomerForm, phone: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium" placeholder="Contoh: 62812345678"/></div></div></div><div className="p-5 border-t bg-gray-50"><button onClick={handleProSubmit} className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg transition flex justify-center items-center gap-2">{isSubmitting ? <Loader2 className="animate-spin"/> : <><Save size={18}/> {selectedCustomer ? 'Pilih & Proses' : (sendWaAfterSave ? 'Simpan & Kirim WA' : 'Terima Pembayaran')}</>}</button></div></div></div>)}
     </div>
