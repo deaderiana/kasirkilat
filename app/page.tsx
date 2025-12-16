@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { 
   Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, 
-  Menu, Loader2, User, Users, X, Save, TrendingUp, Lock, Wallet, Percent, Gift, Key, QrCode, Banknote, LogOut, LayoutDashboard, Crown, ChevronRight, Zap
+  Menu, Loader2, User, Users, X, Save, TrendingUp, Lock, Wallet, Percent, Gift, Key, QrCode, Banknote, LogOut, LayoutDashboard, Crown, ChevronRight, Zap, Eye, EyeOff, ShieldAlert, Settings, ShieldCheck
 } from 'lucide-react';
 import Logo from '@/components/Logo';
 
@@ -19,11 +19,14 @@ export default function CashierPage() {
   const [taxRate, setTaxRate] = useState<number>(0);
   
   // --- SECURITY & MENU STATE ---
-  const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState(false); // Default: TERKUNCI
   const [showPinModal, setShowPinModal] = useState(false);
   const [showMainMenu, setShowMainMenu] = useState(false);
   const [pinInput, setPinInput] = useState('');
-  const [savedPin, setSavedPin] = useState('');
+  const [savedPin, setSavedPin] = useState<string | null>(null); // Null artinya belum load, '' artinya kosong
+  
+  // --- UI STATE ---
+  const [revealMargin, setRevealMargin] = useState(false); 
 
   // --- DATA STATE ---
   const [products, setProducts] = useState<any[]>([]);
@@ -54,24 +57,38 @@ export default function CashierPage() {
   // --- 1. INITIAL LOAD ---
   useEffect(() => {
     const initData = async () => {
-      const isUnlocked = sessionStorage.getItem('is_admin_unlocked') === 'true';
-      setIsAdminUnlocked(isUnlocked);
-
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push('/login'); return; }
       setUser(session.user);
 
+      // Cek Status Lock di Session Storage (Browser Memory)
+      const sessionStatus = sessionStorage.getItem('is_admin_unlocked');
+      
+      // Ambil Profil & PIN dari Database
       const { data: profile } = await supabase.from('profiles').select('is_pro, pro_expires_at, tax_rate, admin_pin').eq('id', session.user.id).single();
+      
       let userIsPro = false;
       if (profile) {
          if (profile.is_pro) {
              if (!profile.pro_expires_at || new Date(profile.pro_expires_at) > new Date()) userIsPro = true;
          }
          setTaxRate(profile.tax_rate || 0);
-         setSavedPin(profile.admin_pin || '');
-         if (!profile.admin_pin) {
+         
+         const dbPin = profile.admin_pin || '';
+         setSavedPin(dbPin);
+
+         // --- LOGIKA KUNCI UTAMA ---
+         if (!dbPin) {
+             // 1. Jika User BELUM punya PIN di DB -> Paksa BUKA (Mode Owner)
              setIsAdminUnlocked(true);
              sessionStorage.setItem('is_admin_unlocked', 'true');
+         } else {
+             // 2. Jika User PUNYA PIN -> Cek Session
+             if (sessionStatus === 'true') {
+                 setIsAdminUnlocked(true); // Sudah pernah masukkan PIN sesi ini
+             } else {
+                 setIsAdminUnlocked(false); // Default: TERKUNCI (Mode Karyawan)
+             }
          }
       }
       setIsPro(userIsPro);
@@ -108,7 +125,7 @@ export default function CashierPage() {
   const removeFromCart = (productId: number) => { setCart(prev => prev.filter(item => item.id !== productId)); setPaymentAmount(''); setChange(0); };
   const updateQty = (productId: number, delta: number) => { setCart(prev => prev.map(item => { if (item.id === productId) { const newQty = item.qty + delta; return newQty > 0 ? { ...item, qty: newQty } : item; } return item; })); setPaymentAmount(''); setChange(0); };
 
-  // --- CALCULATIONS (PERBAIKAN LOGIKA DISINI) ---
+  // --- CALCULATIONS ---
   const subTotal = cart.reduce((acc, item) => acc + (item.price * item.qty), 0);
   const discountRate = Math.min(100, Math.max(0, Number(discountPercent) || 0));
   const discountValue = Math.floor((subTotal * discountRate) / 100);
@@ -117,7 +134,6 @@ export default function CashierPage() {
   const grandTotal = taxableAmount + taxValue;
   const potentialPoints = Math.floor(grandTotal / POINT_RATE);
   
-  // Hitung Total Modal (HPP) untuk margin
   const totalCost = cart.reduce((acc, item) => acc + ((item.buy_price || 0) * item.qty), 0);
   const marginValue = subTotal - totalCost - discountValue;
 
@@ -127,7 +143,6 @@ export default function CashierPage() {
   const handleDiscountInput = (val: string) => { 
       let num = Number(val); if (num > 100) num = 100; if (num < 0) num = 0;
       setDiscountPercent(val); 
-      // Recalc change
       const newDiscVal = Math.floor((subTotal * num) / 100);
       const newTaxable = Math.max(0, subTotal - newDiscVal);
       const newTax = Math.floor(newTaxable * (taxRate / 100));
@@ -204,33 +219,59 @@ export default function CashierPage() {
       else { if (!newCustomerForm.name || (sendWaAfterSave && !newCustomerForm.phone)) return alert("Nama pelanggan wajib diisi!"); const { data, error } = await supabase.from('customers').insert([{ user_id: user.id, name: newCustomerForm.name, phone: newCustomerForm.phone || '-', points: 0 }]).select().single(); if (error) return alert("Gagal: " + error.message); processTransaction(newCustomerForm.phone || '', newCustomerForm.name, data.id); setCustomers(prev => [...prev, data]); }
   };
 
-  const handleAdminClick = () => { if (isAdminUnlocked) { router.push('/admin'); } else { setPinInput(''); setShowMainMenu(false); setShowPinModal(true); } };
-  const handleUpgradeClick = () => { window.open(`https://wa.me/6281234567890?text=${encodeURIComponent("Halo, saya ingin upgrade PRO.")}`, '_blank'); };
+  // --- MENU & SECURITY HANDLERS ---
+  const handleAdminClick = () => {
+      if (isAdminUnlocked) { 
+          router.push('/admin'); 
+      } else { 
+          setPinInput(''); 
+          setShowMainMenu(false); 
+          setShowPinModal(true); 
+      }
+  };
+
+  const handleUpgradeClick = () => { window.open(`https://wa.me/6282177771224?text=${encodeURIComponent("Halo, saya ingin upgrade PRO.")}`, '_blank'); };
   const handleLogout = async () => { await supabase.auth.signOut(); sessionStorage.clear(); router.push('/login'); };
-  const handlePinSubmit = (e: React.FormEvent) => { e.preventDefault(); if (pinInput === savedPin) { sessionStorage.setItem('is_admin_unlocked', 'true'); setIsAdminUnlocked(true); setShowPinModal(false); router.push('/admin'); } else alert("PIN Salah!"); };
+  
+  // LOGIC LOCK APP (Final Fix)
+  const handleLockApp = () => {
+      if (!savedPin) return alert("PIN belum ditemukan. Harap refresh halaman atau set PIN ulang.");
+      if (confirm("Kunci Mode Kasir?")) { 
+          sessionStorage.setItem('is_admin_unlocked', 'false'); 
+          setIsAdminUnlocked(false); 
+          setShowMainMenu(false);
+          // Force UI update
+          setTimeout(() => alert("Aplikasi Terkunci. Mode Kasir Aktif."), 100);
+      }
+  };
+
+  const handlePinSubmit = (e: React.FormEvent) => { 
+      e.preventDefault(); 
+      if (pinInput === savedPin) { 
+          sessionStorage.setItem('is_admin_unlocked', 'true'); 
+          setIsAdminUnlocked(true); 
+          setShowPinModal(false); 
+          alert("Mode Owner Terbuka! ✅"); 
+      } else { 
+          alert("PIN Salah! ❌"); 
+      } 
+  };
 
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-emerald-600" size={40}/></div>;
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-gray-50 font-sans font-inter text-gray-800 overflow-hidden relative">
       
-      {/* HEADER & PRODUK (KIRI) */}
+      {/* HEADER (KIRI) */}
       <div className="flex-1 flex flex-col h-full relative z-0">
         <header className="bg-white p-3 border-b border-gray-200 flex items-center gap-3 shadow-sm z-10 sticky top-0">
           <button onClick={() => setShowMainMenu(true)} className="p-2 hover:bg-gray-100 rounded-lg text-gray-800 transition flex-shrink-0">
              <Menu size={24}/>
           </button>
           <div className="hidden sm:block"><Logo /></div>
-          
           <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 text-gray-400" size={18}/>
-              <input 
-                type="text" 
-                placeholder="Cari produk..." 
-                value={searchQuery} 
-                onChange={e => setSearchQuery(e.target.value)} 
-                className="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition text-sm"
-              />
+              <input type="text" placeholder="Cari produk..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition text-sm"/>
           </div>
         </header>
 
@@ -277,18 +318,24 @@ export default function CashierPage() {
         </div>
 
         <div className="p-4 bg-gray-50 border-t border-gray-200 space-y-3 pb-6 md:pb-4 safe-area-pb">
-            {/* 1. PROFIT (FIXED ERROR) */}
+            {/* 1. PROFIT (HANYA MUNCUL JIKA UNLOCKED) */}
             {isPro && isAdminUnlocked && cart.length > 0 && (
-                <div className="bg-emerald-50 border border-emerald-100 p-2 rounded-lg flex justify-between items-center text-xs">
-                    <span className="font-bold text-emerald-800 flex items-center gap-1"><TrendingUp size={12}/> Margin</span>
-                    <span className="font-bold text-emerald-600">Rp {marginValue.toLocaleString()}</span>
+                <div 
+                    onClick={() => setRevealMargin(!revealMargin)}
+                    className="bg-emerald-50 border border-emerald-100 p-2 rounded-lg flex justify-between items-center text-xs cursor-pointer active:scale-95 transition select-none"
+                >
+                    <span className="font-bold text-emerald-800 flex items-center gap-1"><TrendingUp size={12}/> Margin {revealMargin ? '' : '(Disensor)'}</span>
+                    <div className="flex items-center gap-2 font-bold text-emerald-600">
+                        {revealMargin ? `Rp ${marginValue.toLocaleString()}` : 'Rp ********'}
+                        {revealMargin ? <EyeOff size={12}/> : <Eye size={12}/>}
+                    </div>
                 </div>
             )}
 
             {/* 2. DISKON */}
             {cart.length > 0 && (<div className="flex justify-between items-center gap-2"><label className="text-xs font-bold text-gray-500 flex items-center gap-1"><Percent size={12}/> Diskon (%)</label><input type="number" max={100} value={discountPercent} onChange={e => handleDiscountInput(e.target.value)} className="w-16 p-1.5 border border-gray-300 rounded-lg text-xs font-bold text-right outline-none focus:border-emerald-500 text-red-500" placeholder="0"/></div>)}
 
-            {/* 3. TOTAL (FIXED ERROR - CLEAN VARS) */}
+            {/* 3. TOTAL */}
             <div className="space-y-1">
                 {(discountValue > 0 || taxValue > 0) && (<div className="flex justify-between items-center text-xs text-gray-500"><span>Subtotal</span><span>Rp {subTotal.toLocaleString()}</span></div>)}
                 <div className="flex justify-between items-center"><span className="text-gray-500 text-sm font-medium">Total Tagihan</span><span className="text-xl font-extrabold text-gray-900">Rp {grandTotal.toLocaleString()}</span></div>
@@ -317,13 +364,37 @@ export default function CashierPage() {
         </div>
       </div>
 
-      {/* --- MENU & MODALS SAMA SEPERTI SEBELUMNYA --- */}
+      {/* --- MENU UTAMA --- */}
       {showMainMenu && (
           <div className="fixed inset-0 bg-black/60 z-[100] flex justify-start">
               <div className="bg-white w-72 h-full shadow-2xl p-6 flex flex-col animate-in slide-in-from-left duration-300">
                   <div className="flex justify-between items-center mb-8"><h2 className="font-bold text-xl text-gray-800">Menu Utama</h2><button onClick={()=>setShowMainMenu(false)} className="p-2 hover:bg-gray-100 rounded-full"><X size={24}/></button></div>
+                  
+                  {/* USER INFO */}
                   <div className="mb-6 p-4 bg-gray-50 rounded-2xl border border-gray-100"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-500"><User size={20}/></div><div><p className="font-bold text-sm text-gray-900 line-clamp-1">{user?.email?.split('@')[0]}</p><span className={`text-[10px] px-2 py-0.5 rounded font-bold ${isPro ? 'bg-orange-100 text-orange-600' : 'bg-gray-200 text-gray-500'}`}>{isPro ? 'PRO PLAN' : 'FREE PLAN'}</span></div></div></div>
-                  <div className="space-y-2 flex-1"><button onClick={handleAdminClick} className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition border border-transparent hover:border-gray-200"><div className="flex items-center gap-3 font-bold text-gray-700"><LayoutDashboard size={20} className="text-emerald-600"/> Dashboard Admin</div>{isAdminUnlocked ? <ChevronRight size={16} className="text-gray-400"/> : <Lock size={14} className="text-gray-400"/>}</button>{!isPro && (<button onClick={handleUpgradeClick} className="w-full flex items-center justify-between p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-100 hover:shadow-sm transition"><div className="flex items-center gap-3 font-bold text-orange-700"><Crown size={20}/> Upgrade PRO</div><Zap size={16} className="text-orange-400 animate-pulse"/></button>)}</div>
+                  
+                  <div className="space-y-2 flex-1">
+                      <button onClick={handleAdminClick} className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition border border-transparent hover:border-gray-200"><div className="flex items-center gap-3 font-bold text-gray-700"><LayoutDashboard size={20} className="text-emerald-600"/> Dashboard Admin</div>{isAdminUnlocked ? <ChevronRight size={16} className="text-gray-400"/> : <Lock size={14} className="text-gray-400"/>}</button>
+                      
+                      {/* TAMPILKAN TOMBOL LOCK JIKA PIN SUDAH ADA */}
+                      {isPro && isAdminUnlocked && savedPin && (
+                          <button onClick={handleLockApp} className="w-full flex items-center justify-between p-3 rounded-xl bg-red-50 hover:bg-red-100 transition border border-red-100">
+                              <div className="flex items-center gap-3 font-bold text-red-600"><ShieldAlert size={20}/> Kunci (Mode Kasir)</div>
+                              <Lock size={16} className="text-red-400"/>
+                          </button>
+                      )}
+
+                      {/* JIKA PIN BELUM ADA, MINTA SETTING PIN */}
+                      {isPro && isAdminUnlocked && !savedPin && (
+                          <button onClick={()=>router.push('/admin')} className="w-full flex items-center justify-between p-3 rounded-xl bg-yellow-50 hover:bg-yellow-100 transition border border-yellow-100 text-left">
+                              <div className="flex items-center gap-3 font-bold text-yellow-700"><Settings size={20}/> Atur PIN Dulu</div>
+                              <ChevronRight size={16} className="text-yellow-500"/>
+                          </button>
+                      )}
+
+                      {!isPro && (<button onClick={handleUpgradeClick} className="w-full flex items-center justify-between p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-100 hover:shadow-sm transition"><div className="flex items-center gap-3 font-bold text-orange-700"><Crown size={20}/> Upgrade PRO</div><Zap size={16} className="text-orange-400 animate-pulse"/></button>)}
+                  </div>
+
                   <div className="border-t border-gray-100 pt-4"><button onClick={handleLogout} className="w-full flex items-center gap-3 p-3 rounded-xl text-red-500 font-bold hover:bg-red-50 transition"><LogOut size={20}/> Keluar Aplikasi</button><p className="text-[10px] text-center text-gray-300 mt-4">Versi 1.0.0</p></div>
               </div>
               <div className="flex-1" onClick={()=>setShowMainMenu(false)}></div>
