@@ -212,7 +212,7 @@ export default function CashierPage() {
   };
 
   const handleUpgradeClick = () => {
-      const ownerPhone = "6281234567890";
+      const ownerPhone = "6282177771224";
       const message = "Halo Admin, saya ingin upgrade ke akun *PRO PLAN*. Mohon infonya.";
       window.open(`https://wa.me/${ownerPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
