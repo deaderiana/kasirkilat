@@ -24,7 +24,7 @@ export default function LoginPage() {
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) alert("Gagal Login: " + error.message);
-      else { router.push('/'); }
+      else { router.push('/pos'); }
     }
     setLoading(false);
   };
