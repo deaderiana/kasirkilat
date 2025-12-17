@@ -271,7 +271,7 @@ export default function CashierPage() {
   };
 
   // --- ACTIONS ---
-  const handleUpgradeClick = () => { window.open(`https://wa.me/6281234567890?text=${encodeURIComponent("Halo, saya ingin upgrade PRO.")}`, '_blank'); };
+  const handleUpgradeClick = () => { window.open(`https://wa.me/6282177771224?text=${encodeURIComponent("Halo, saya ingin upgrade PRO.")}`, '_blank'); };
   const fetchRecentHistory = async () => { if(!activeShift) return; setAuthLoading(true); const { data } = await supabase.from('transactions').select('*').gte('created_at', activeShift.start_time).eq('user_id', user.id).order('created_at', { ascending: false }).limit(20); setRecentTrx(data || []); setAuthLoading(false); setShowHistoryModal(true); };
   const handleReprint = (trx: any) => { const w = window.open('', '', 'width=400,height=600'); if (!w) return alert("Popup blocked!"); const items = trx.items_summary.split(', ').map((i: string) => `<div>${i}</div>`).join(''); const cashierName = activeShift?.cashier_name || 'Admin'; const content = `<html><body style="font-family:'Courier New';font-size:10px;width:48mm"><div style="text-align:center;font-weight:bold">${storeName}<br/>(REPRINT)</div><hr/><div>Kasir: ${cashierName}</div><div>${new Date(trx.created_at).toLocaleString()}</div><hr/>${items}<hr/><div style="display:flex;justify-content:space-between"><span>TOTAL</span><span>${trx.final_amount.toLocaleString()}</span></div><div style="text-align:center;margin-top:10px">Terima Kasih</div><script>window.print()</script></body></html>`; w.document.write(content); w.document.close(); };
   const initVoid = (id: number) => { setVoidAuthId(id); setPinInput(''); setShowPinModal(true); };
