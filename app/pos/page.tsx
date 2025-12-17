@@ -36,7 +36,7 @@ export default function CashierPage() {
   const [endCashInput, setEndCashInput] = useState('');
   const [shiftSummary, setShiftSummary] = useState<any>(null); 
   
-  // --- NEW: SUCCESS CLOSE STATE ---
+  // --- SUCCESS CLOSE STATE ---
   const [shiftClosedData, setShiftClosedData] = useState<any>(null);
   const [showSuccessCloseModal, setShowSuccessCloseModal] = useState(false);
 
@@ -140,11 +140,44 @@ export default function CashierPage() {
     setFilteredProducts(result);
   }, [activeCategory, searchQuery, products]);
 
-  // --- CART LOGIC ---
+  // --- CART LOGIC (FIX: STOCK GUARD ADDED) ---
   const resetPaymentState = () => { setPaymentAmount(''); setChange(0); setDiscountPercent(''); setPaymentMethod('CASH'); };
-  const addToCart = (product: any) => { setCart(prev => { const existing = prev.find(item => item.id === product.id); if (existing) return prev.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item); return [...prev, { ...product, qty: 1, item_discount: 0 }]; }); setPaymentAmount(''); setChange(0); };
+  
+  const addToCart = (product: any) => { 
+      // CEK STOK SEBELUM NAMBAH
+      const existingItem = cart.find(item => item.id === product.id);
+      const currentQtyInCart = existingItem ? existingItem.qty : 0;
+      
+      if (currentQtyInCart + 1 > product.stock) {
+          alert(`Stok tidak cukup! Sisa stok: ${product.stock}`);
+          return; // STOP HERE
+      }
+
+      setCart(prev => { 
+          if (existingItem) return prev.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item); 
+          return [...prev, { ...product, qty: 1, item_discount: 0 }]; 
+      }); 
+      setPaymentAmount(''); setChange(0); 
+  };
+  
   const removeFromCart = (productId: number) => { setCart(prev => prev.filter(item => item.id !== productId)); setPaymentAmount(''); setChange(0); };
-  const updateQty = (productId: number, delta: number) => { setCart(prev => prev.map(item => { if (item.id === productId) { const newQty = item.qty + delta; return newQty > 0 ? { ...item, qty: newQty } : item; } return item; })); setPaymentAmount(''); setChange(0); };
+  
+  const updateQty = (productId: number, delta: number) => { 
+      // CEK STOK SAAT UPDATE QTY
+      const product = products.find(p => p.id === productId);
+      const itemInCart = cart.find(i => i.id === productId);
+      
+      if (product && itemInCart) {
+          if (delta > 0 && itemInCart.qty + delta > product.stock) {
+              alert(`Stok mentok! Sisa stok: ${product.stock}`);
+              return; // STOP HERE
+          }
+      }
+
+      setCart(prev => prev.map(item => { if (item.id === productId) { const newQty = item.qty + delta; return newQty > 0 ? { ...item, qty: newQty } : item; } return item; })); 
+      setPaymentAmount(''); 
+      setChange(0); 
+  };
 
   const openItemDiscount = (item: any) => { setDiscItem(item); setDiscValueInput(''); setDiscType('RP'); setShowItemDiscModal(true); };
   const saveItemDiscount = (e: React.FormEvent) => { e.preventDefault(); if (!discItem) return; const val = Number(discValueInput) || 0; let finalDiscountRp = 0; if (discType === 'PERCENT') { const safePercent = Math.min(val, 100); finalDiscountRp = Math.floor((discItem.price * safePercent) / 100); } else { finalDiscountRp = Math.min(val, discItem.price); } setCart(prev => prev.map(i => i.id === discItem.id ? { ...i, item_discount: finalDiscountRp } : i)); setPaymentAmount(''); setChange(0); setShowItemDiscModal(false); };
@@ -232,19 +265,15 @@ export default function CashierPage() {
       setShowEndShiftModal(true);
   };
 
-  // --- SAFE CLOSE & PRINT LOGIC ---
   const handleCloseShift = async (e: React.FormEvent) => {
       e.preventDefault();
       const actual = Number(endCashInput.replace(/[^0-9]/g,''));
       const diff = actual - shiftSummary.expected;
-      
       const { error } = await supabase.from('cash_shifts').update({ end_time: new Date().toISOString(), end_cash_actual: actual, expected_cash: shiftSummary.expected, difference: diff, total_sales: shiftSummary.totalSales, total_cash_sales: shiftSummary.cashSales, status: 'CLOSED' }).eq('id', activeShift.id);
       if(error) return alert("Gagal: " + error.message);
-      
-      // Store data locally for printing
       setShiftClosedData({ activeShift, shiftSummary, actual, diff, cashierName: activeShift?.cashier_name || 'Admin', closeTime: new Date().toLocaleString() });
       setShowEndShiftModal(false);
-      setShowSuccessCloseModal(true); // Open Success Modal
+      setShowSuccessCloseModal(true);
   };
 
   const printClosedShiftReport = () => {
@@ -377,7 +406,7 @@ export default function CashierPage() {
         </div>
       </div>
 
-      {/* --- MENU UTAMA --- */}
+      {/* --- MENU & MODALS (UPDATED: HISTORY MODAL WITH SCROLL) --- */}
       {showMainMenu && (
           <div className="fixed inset-0 bg-black/60 z-[100] flex justify-start">
               <div className="bg-white w-72 h-full shadow-2xl p-6 flex flex-col animate-in slide-in-from-left duration-300">
@@ -386,19 +415,11 @@ export default function CashierPage() {
                   <div className="space-y-2 flex-1">
                       <button onClick={prepareEndShift} className="w-full flex items-center justify-between p-3 rounded-xl bg-red-600 text-white shadow-lg hover:bg-red-700 transition"><div className="flex items-center gap-3 font-bold"><LogOut size={20}/> Tutup Kasir / Rekap</div><ChevronRight size={16}/></button>
                       <button onClick={handleAdminClick} className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition border border-transparent hover:border-gray-200"><div className="flex items-center gap-3 font-bold text-gray-700"><LayoutDashboard size={20} className="text-emerald-600"/> Dashboard Admin</div>{isAdminUnlocked ? <ChevronRight size={16} className="text-gray-400"/> : <Lock size={14} className="text-gray-400"/>}</button>
-                      
-                      {/* --- CUSTOMER BUTTON (LOCKED FOR FREE) --- */}
-                      <button onClick={() => isPro ? setShowCustomerModal(true) : handleUpgradeClick()} className={`w-full flex items-center justify-between p-3 rounded-xl transition border border-transparent ${isPro ? 'hover:bg-gray-50 hover:border-gray-200' : 'opacity-70 hover:bg-gray-50'}`}>
-                          <div className="flex items-center gap-3 font-bold text-gray-700">
-                              <Users size={20} className={isPro ? "text-blue-600" : "text-gray-400"}/> Cek Member/Poin
-                          </div>
-                          {isPro ? <ChevronRight size={16} className="text-gray-400"/> : <Lock size={14} className="text-orange-500"/>}
-                      </button>
-
+                      <button onClick={() => isPro ? setShowCustomerModal(true) : handleUpgradeClick()} className={`w-full flex items-center justify-between p-3 rounded-xl transition border border-transparent ${isPro ? 'hover:bg-gray-50 hover:border-gray-200' : 'opacity-70 hover:bg-gray-50'}`}><div className="flex items-center gap-3 font-bold text-gray-700"><Users size={20} className={isPro ? "text-blue-600" : "text-gray-400"}/> Cek Member/Poin</div>{isPro ? <ChevronRight size={16} className="text-gray-400"/> : <Lock size={14} className="text-orange-500"/>}</button>
                       {isPro && isAdminUnlocked && savedPin && (<button onClick={handleLockApp} className="w-full flex items-center justify-between p-3 rounded-xl bg-red-50 hover:bg-red-100 transition border border-red-100"><div className="flex items-center gap-3 font-bold text-red-600"><ShieldAlert size={20}/> Kunci (Mode Kasir)</div><Lock size={16} className="text-red-400"/></button>)}
                       {!isPro && (<button onClick={handleUpgradeClick} className="w-full flex items-center justify-between p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-100 hover:shadow-sm transition"><div className="flex items-center gap-3 font-bold text-orange-700"><Crown size={20}/> Upgrade PRO</div><Zap size={16} className="text-orange-400 animate-pulse"/></button>)}
                   </div>
-                  <div className="border-t border-gray-100 pt-4"><button onClick={handleLogout} className="w-full flex items-center gap-3 p-3 rounded-xl text-gray-500 font-bold hover:bg-gray-50 transition"><LogOut size={20}/> Keluar Aplikasi</button><p className="text-[10px] text-center text-gray-300 mt-4">Versi 1.9.0 (Safe Print)</p></div>
+                  <div className="border-t border-gray-100 pt-4"><button onClick={handleLogout} className="w-full flex items-center gap-3 p-3 rounded-xl text-gray-500 font-bold hover:bg-gray-50 transition"><LogOut size={20}/> Keluar Aplikasi</button><p className="text-[10px] text-center text-gray-300 mt-4">Versi 1.9.5 (StockGuard & MobileFix)</p></div>
               </div>
               <div className="flex-1" onClick={()=>setShowMainMenu(false)}></div>
           </div>
@@ -406,32 +427,38 @@ export default function CashierPage() {
       {showPinModal && (<div className="fixed inset-0 bg-black/60 z-[100] flex justify-center items-center p-4 backdrop-blur-sm"><div className="bg-white w-full max-w-xs p-6 rounded-2xl shadow-2xl relative text-center"><div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600"><Lock size={24}/></div><h3 className="font-bold text-lg text-gray-800">Mode Kasir Aktif</h3><p className="text-sm text-gray-500 mb-4">Masukkan PIN Admin untuk konfirmasi.</p><form onSubmit={handlePinSubmit}><input type="password" autoFocus maxLength={6} value={pinInput} onChange={e => setPinInput(e.target.value)} className="w-full p-3 bg-gray-100 rounded-xl text-center font-bold text-xl tracking-widest outline-emerald-500 mb-4" placeholder="••••••"/><div className="flex gap-2"><button type="button" onClick={()=>{setShowPinModal(false); setVoidAuthId(null);}} className="flex-1 py-2 bg-gray-200 text-gray-600 font-bold rounded-xl">Batal</button><button type="submit" className="flex-1 py-2 bg-gray-900 text-white font-bold rounded-xl">Konfirmasi</button></div></form></div></div>)}
       {showShiftModal && (<div className="fixed inset-0 bg-black/80 z-[100] flex justify-center items-center p-4 backdrop-blur-md"><div className="bg-white w-full max-w-sm p-8 rounded-3xl shadow-2xl text-center"><div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-600"><Wallet size={32}/></div><h2 className="text-2xl font-extrabold text-gray-900 mb-2">Buka Kasir</h2><p className="text-gray-500 mb-6">Siapkan laci kasir Anda.</p><form onSubmit={handleOpenShift}><div className="space-y-4"><div className="relative"><UserCheck className="absolute left-4 top-3.5 text-gray-400" size={18}/><input type="text" required value={cashierNameInput} onChange={e=>setCashierNameInput(e.target.value)} className="w-full pl-12 p-3 bg-gray-50 rounded-xl border border-gray-200 font-bold text-gray-800" placeholder="Nama Kasir Bertugas"/></div><div className="relative"><DollarSign className="absolute left-4 top-3.5 text-gray-400" size={18}/><input type="number" required autoFocus value={startCashInput} onChange={e=>setStartCashInput(e.target.value)} className="w-full pl-12 p-3 bg-gray-50 rounded-xl border border-gray-200 font-bold text-gray-800" placeholder="Modal Awal (Rp)"/></div></div><button className="w-full py-4 mt-6 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl shadow-lg transition text-lg">Buka Shift</button></form></div></div>)}
       
-      {/* END SHIFT MODAL */}
       {showEndShiftModal && shiftSummary && (<div className="fixed inset-0 bg-black/80 z-[100] flex justify-center items-center p-4 backdrop-blur-md"><div className="bg-white w-full max-w-md p-0 rounded-3xl shadow-2xl overflow-hidden"><div className="bg-gray-900 p-6 text-white text-center"><h2 className="text-xl font-bold">Rekapitulasi Kasir</h2><p className="text-sm opacity-80">{new Date().toLocaleDateString()}</p></div><div className="p-6 space-y-4"><div className="flex justify-between text-sm"><span>Modal Awal</span><span className="font-bold">Rp {activeShift.start_cash.toLocaleString()}</span></div><div className="flex justify-between text-sm"><span>Penjualan Tunai</span><span className="font-bold text-emerald-600">+ Rp {shiftSummary.cashSales.toLocaleString()}</span></div><div className="flex justify-between text-sm"><span>Non-Tunai (QRIS/Trf)</span><span className="font-bold text-blue-600">Rp {shiftSummary.nonCashSales.toLocaleString()}</span></div><hr/><div className="flex justify-between text-lg font-bold bg-gray-50 p-3 rounded-xl border border-gray-200"><span>Target Uang Fisik</span><span>Rp {shiftSummary.expected.toLocaleString()}</span></div><div className="pt-2"><label className="text-xs font-bold text-gray-500 block mb-2 text-center">Hitung & Masukkan Uang Fisik Aktual</label><input type="number" required autoFocus value={endCashInput} onChange={e=>setEndCashInput(e.target.value)} className="w-full p-4 bg-yellow-50 border-2 border-yellow-200 rounded-2xl text-2xl font-bold text-center outline-none text-yellow-800" placeholder="0"/></div><div className="flex gap-3 pt-2"><button type="button" onClick={()=>setShowEndShiftModal(false)} className="flex-1 py-3 bg-gray-100 font-bold rounded-xl">Batal</button><button onClick={handleCloseShift} className="flex-[2] py-3 bg-red-600 text-white font-bold rounded-xl shadow-lg">Tutup Shift</button></div></div></div></div>)}
-      
-      {/* SUCCESS CLOSE SHIFT MODAL */}
-      {showSuccessCloseModal && (
-          <div className="fixed inset-0 bg-black/90 z-[110] flex justify-center items-center p-4 backdrop-blur-md">
-              <div className="bg-white w-full max-w-sm p-8 rounded-3xl shadow-2xl text-center animate-in zoom-in duration-300">
-                  <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                      <CheckCircle size={40} className="text-green-600"/>
+      {showSuccessCloseModal && (<div className="fixed inset-0 bg-black/90 z-[110] flex justify-center items-center p-4 backdrop-blur-md"><div className="bg-white w-full max-w-sm p-8 rounded-3xl shadow-2xl text-center animate-in zoom-in duration-300"><div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle size={40} className="text-green-600"/></div><h2 className="text-2xl font-extrabold text-gray-900 mb-2">Shift Berhasil Ditutup!</h2><p className="text-gray-500 mb-8">Data keuangan telah diamankan.</p><div className="space-y-3"><button onClick={printClosedShiftReport} className="w-full py-4 bg-gray-900 hover:bg-black text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 transition"><Printer size={20}/> Cetak Laporan</button><button onClick={() => { setShowSuccessCloseModal(false); handleLogout(); }} className="w-full py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-2xl transition">Keluar (Logout)</button></div></div></div>)}
+
+      {/* HISTORY MODAL (FIXED WITH HORIZONTAL SCROLL) */}
+      {showHistoryModal && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-center p-4 backdrop-blur-sm">
+              <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+                  <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
+                      <h3 className="font-bold text-gray-800 flex items-center gap-2"><History size={20}/> Riwayat Hari Ini</h3>
+                      <button onClick={()=>setShowHistoryModal(false)} className="bg-gray-200 p-1.5 rounded-full hover:bg-gray-300"><X size={18}/></button>
                   </div>
-                  <h2 className="text-2xl font-extrabold text-gray-900 mb-2">Shift Berhasil Ditutup!</h2>
-                  <p className="text-gray-500 mb-8">Data keuangan telah diamankan.</p>
-                  
-                  <div className="space-y-3">
-                      <button onClick={printClosedShiftReport} className="w-full py-4 bg-gray-900 hover:bg-black text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 transition">
-                          <Printer size={20}/> Cetak Laporan
-                      </button>
-                      <button onClick={() => { setShowSuccessCloseModal(false); handleLogout(); }} className="w-full py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-2xl transition">
-                          Keluar (Logout)
-                      </button>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                      {recentTrx.length === 0 ? <p className="text-center text-gray-400 text-sm">Belum ada transaksi.</p> : recentTrx.map(trx => (
+                          // Added overflow-x-auto to the container to allow scrolling
+                          <div key={trx.id} className="overflow-x-auto">
+                              <div className="p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition flex justify-between items-center min-w-[300px]">
+                                  <div>
+                                      <p className="font-bold text-sm text-gray-800">Rp {trx.final_amount.toLocaleString()}</p>
+                                      <p className="text-[10px] text-gray-500">{new Date(trx.created_at).toLocaleTimeString()} • {trx.payment_method}</p>
+                                      <p className="text-[10px] text-gray-400 truncate max-w-[150px]">{trx.items_summary}</p>
+                                  </div>
+                                  <div className="flex gap-2">
+                                      <button onClick={()=>handleReprint(trx)} className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 flex-shrink-0" title="Print Ulang"><Printer size={16}/></button>
+                                      <button onClick={()=>initVoid(trx.id)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 flex-shrink-0" title="Void / Batalkan"><Trash2 size={16}/></button>
+                                  </div>
+                              </div>
+                          </div>
+                      ))}
                   </div>
               </div>
           </div>
       )}
-
-      {showHistoryModal && (<div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-center p-4 backdrop-blur-sm"><div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"><div className="p-4 border-b bg-gray-50 flex justify-between items-center"><h3 className="font-bold text-gray-800 flex items-center gap-2"><History size={20}/> Riwayat Hari Ini</h3><button onClick={()=>setShowHistoryModal(false)} className="bg-gray-200 p-1.5 rounded-full hover:bg-gray-300"><X size={18}/></button></div><div className="flex-1 overflow-y-auto p-4 space-y-3">{recentTrx.length === 0 ? <p className="text-center text-gray-400 text-sm">Belum ada transaksi.</p> : recentTrx.map(trx => (<div key={trx.id} className="p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition flex justify-between items-center"><div><p className="font-bold text-sm text-gray-800">Rp {trx.final_amount.toLocaleString()}</p><p className="text-[10px] text-gray-500">{new Date(trx.created_at).toLocaleTimeString()} • {trx.payment_method}</p><p className="text-[10px] text-gray-400 truncate max-w-[150px]">{trx.items_summary}</p></div><div className="flex gap-2"><button onClick={()=>handleReprint(trx)} className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200" title="Print Ulang"><Printer size={16}/></button><button onClick={()=>initVoid(trx.id)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200" title="Void / Batalkan"><Trash2 size={16}/></button></div></div>))}</div></div></div>)}
       {showCustomerModal && (<div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-center p-4 backdrop-blur-sm"><div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"><div className="p-5 border-b bg-gray-50 flex justify-between items-center"><div><h3 className="font-bold text-lg flex items-center gap-2 text-gray-800"><Users className="text-emerald-600"/> Pilih Pelanggan</h3><p className="text-xs text-gray-500">Wajib pilih untuk mencatat Poin / Hutang</p></div><button onClick={()=>setShowCustomerModal(false)} className="bg-gray-200 p-1.5 rounded-full hover:bg-gray-300"><X size={18}/></button></div><div className="p-5 overflow-y-auto"><div className="mb-6"><label className="text-xs font-bold text-gray-500 mb-2 block">Cari Pelanggan Lama</label><div className="relative"><Search className="absolute left-3 top-3 text-gray-400" size={16}/><input type="text" placeholder="Ketik nama / no WA..." value={customerSearch} onChange={e => {setCustomerSearch(e.target.value); setSelectedCustomer(null);}} className="w-full pl-9 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"/></div>{customerSearch && (<div className="mt-2 border border-gray-100 rounded-xl max-h-40 overflow-y-auto shadow-sm">{customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone.includes(customerSearch)).map(c => (<div key={c.id} onClick={()=>{ setSelectedCustomer(c); setCustomerSearch(c.name); }} className="p-3 hover:bg-emerald-50 cursor-pointer border-b border-gray-50 last:border-0 flex justify-between items-center"><div><p className="font-bold text-sm text-gray-800">{c.name}</p><p className="text-xs text-gray-500">{c.phone}</p></div><div className="text-right"><span className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-500 block mb-1">{c.total_transactions}x Belanja</span><span className="text-[10px] text-blue-600 font-bold flex items-center gap-1 justify-end"><Gift size={8}/> {c.points || 0} Poin</span></div></div>))}</div>)}</div><div className="flex items-center gap-3 mb-6"><div className="h-px bg-gray-200 flex-1"></div><span className="text-xs text-gray-400 font-bold">ATAU INPUT BARU</span><div className="h-px bg-gray-200 flex-1"></div></div><div className={`space-y-3 transition ${selectedCustomer ? 'opacity-50 pointer-events-none grayscale' : ''}`}><div><label className="text-xs font-bold text-gray-500">Nama Pelanggan Baru</label><input type="text" value={newCustomerForm.name} onChange={e=>setNewCustomerForm({...newCustomerForm, name: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium" placeholder="Contoh: Budi Santoso"/></div><div><label className="text-xs font-bold text-gray-500">Nomor WhatsApp</label><input type="number" value={newCustomerForm.phone} onChange={e=>setNewCustomerForm({...newCustomerForm, phone: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium" placeholder="Contoh: 62812345678"/></div></div></div><div className="p-5 border-t bg-gray-50"><button onClick={handleProSubmit} className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg transition flex justify-center items-center gap-2">{isSubmitting ? <Loader2 className="animate-spin"/> : <><Save size={18}/> {selectedCustomer ? 'Pilih & Lanjut' : 'Simpan & Lanjut'}</>}</button></div></div></div>)}
       {showItemDiscModal && discItem && (<div className="fixed inset-0 bg-black/60 z-[100] flex justify-center items-center p-4 backdrop-blur-sm"><div className="bg-white w-full max-w-xs p-6 rounded-2xl shadow-xl relative"><button onClick={()=>setShowItemDiscModal(false)} className="absolute top-4 right-4 bg-gray-100 p-1 rounded-full"><X size={18}/></button><h3 className="font-bold text-lg mb-1">Diskon Produk</h3><p className="text-sm text-gray-500 mb-4 truncate">{discItem.name}</p><div className="flex gap-2 mb-4 bg-gray-100 p-1 rounded-xl"><button onClick={()=>setDiscType('RP')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition ${discType==='RP'?'bg-white shadow text-gray-900':'text-gray-500'}`}>Rupiah (Rp)</button><button onClick={()=>setDiscType('PERCENT')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition ${discType==='PERCENT'?'bg-white shadow text-gray-900':'text-gray-500'}`}>Persen (%)</button></div><form onSubmit={saveItemDiscount}><div className="mb-4 relative"><input type="number" autoFocus required value={discValueInput} onChange={e=>setDiscValueInput(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-center font-bold text-xl outline-emerald-500" placeholder="0"/><span className="absolute right-4 top-4 text-gray-400 font-bold">{discType === 'RP' ? '' : '%'}</span></div><button className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition">Simpan Diskon</button></form></div></div>)}
     </div>
