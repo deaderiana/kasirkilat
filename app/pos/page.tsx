@@ -395,7 +395,7 @@ export default function CashierPage() {
                       {isPro && isAdminUnlocked && savedPin && (<button onClick={handleLockApp} className="w-full flex items-center justify-between p-3 rounded-xl bg-red-50 hover:bg-red-100 transition border border-red-100"><div className="flex items-center gap-3 font-bold text-red-600"><ShieldAlert size={20}/> Kunci (Mode Kasir)</div><Lock size={16} className="text-red-400"/></button>)}
                       {!isPro && (<button onClick={handleUpgradeClick} className="w-full flex items-center justify-between p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-100 hover:shadow-sm transition"><div className="flex items-center gap-3 font-bold text-orange-700"><Crown size={20}/> Upgrade PRO</div><Zap size={16} className="text-orange-400 animate-pulse"/></button>)}
                   </div>
-                  <div className="border-t border-gray-100 pt-4"><button onClick={handleLogout} className="w-full flex items-center gap-3 p-3 rounded-xl text-gray-500 font-bold hover:bg-gray-50 transition"><LogOut size={20}/> Keluar Aplikasi</button><p className="text-[10px] text-center text-gray-300 mt-4">Versi 2.3.0 (Touch Action Fix)</p></div>
+                  <div className="border-t border-gray-100 pt-4"><button onClick={handleLogout} className="w-full flex items-center gap-3 p-3 rounded-xl text-gray-500 font-bold hover:bg-gray-50 transition"><LogOut size={20}/> Keluar Aplikasi</button><p className="text-[10px] text-center text-gray-300 mt-4">Versi 2.4.0 (Card View Mobile)</p></div>
               </div>
               <div className="flex-1" onClick={()=>setShowMainMenu(false)}></div>
           </div>
@@ -405,31 +405,47 @@ export default function CashierPage() {
       {showEndShiftModal && shiftSummary && (<div className="fixed inset-0 bg-black/80 z-[100] flex justify-center items-center p-4 backdrop-blur-md"><div className="bg-white w-full max-w-md p-0 rounded-3xl shadow-2xl overflow-hidden"><div className="bg-gray-900 p-6 text-white text-center"><h2 className="text-xl font-bold">Rekapitulasi Kasir</h2><p className="text-sm opacity-80">{new Date().toLocaleDateString()}</p></div><div className="p-6 space-y-4"><div className="flex justify-between text-sm"><span>Modal Awal</span><span className="font-bold">Rp {activeShift.start_cash.toLocaleString()}</span></div><div className="flex justify-between text-sm"><span>Penjualan Tunai</span><span className="font-bold text-emerald-600">+ Rp {shiftSummary.cashSales.toLocaleString()}</span></div><div className="flex justify-between text-sm"><span>Non-Tunai (QRIS/Trf)</span><span className="font-bold text-blue-600">Rp {shiftSummary.nonCashSales.toLocaleString()}</span></div><hr/><div className="flex justify-between text-lg font-bold bg-gray-50 p-3 rounded-xl border border-gray-200"><span>Target Uang Fisik</span><span>Rp {shiftSummary.expected.toLocaleString()}</span></div><div className="pt-2"><label className="text-xs font-bold text-gray-500 block mb-2 text-center">Hitung & Masukkan Uang Fisik Aktual</label><input type="number" required autoFocus value={endCashInput} onChange={e=>setEndCashInput(e.target.value)} className="w-full p-4 bg-yellow-50 border-2 border-yellow-200 rounded-2xl text-2xl font-bold text-center outline-none text-yellow-800" placeholder="0"/></div><div className="flex gap-3 pt-2"><button type="button" onClick={()=>setShowEndShiftModal(false)} className="flex-1 py-3 bg-gray-100 font-bold rounded-xl">Batal</button><button onClick={handleCloseShift} className="flex-[2] py-3 bg-red-600 text-white font-bold rounded-xl shadow-lg">Cetak & Tutup</button></div></div></div></div>)}
       {showSuccessCloseModal && (<div className="fixed inset-0 bg-black/90 z-[110] flex justify-center items-center p-4 backdrop-blur-md"><div className="bg-white w-full max-w-sm p-8 rounded-3xl shadow-2xl text-center animate-in zoom-in duration-300"><div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle size={40} className="text-green-600"/></div><h2 className="text-2xl font-extrabold text-gray-900 mb-2">Shift Berhasil Ditutup!</h2><p className="text-gray-500 mb-8">Data keuangan telah diamankan.</p><div className="space-y-3"><button onClick={printClosedShiftReport} className="w-full py-4 bg-gray-900 hover:bg-black text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 transition"><Printer size={20}/> Cetak Laporan</button><button onClick={() => { setShowSuccessCloseModal(false); handleLogout(); }} className="w-full py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-2xl transition">Keluar (Logout)</button></div></div></div>)}
 
-      {/* HISTORY MODAL (FIXED SCROLL & TOUCH) */}
+      {/* HISTORY MODAL (RESPONSIVE: TABLE FOR PC, CARDS FOR MOBILE) */}
       {showHistoryModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
               <div className="flex flex-col w-full max-w-md bg-white shadow-2xl rounded-2xl max-h-[85vh]">
-                  <div className="p-4 border-b flex justify-between items-center"><h3 className="flex items-center gap-2 font-bold text-gray-800"><History size={20}/> Riwayat Hari Ini</h3><button onClick={()=>setShowHistoryModal(false)} className="bg-gray-200 p-1.5 rounded-full hover:bg-gray-300"><X size={18}/></button></div>
-                  <div className="flex-1 overflow-y-auto p-4">
-                      {recentTrx.length === 0 ? <p className="text-center text-gray-400 text-sm">Belum ada transaksi.</p> : (
-                          <div className="overflow-x-auto pb-4" style={{ touchAction: 'pan-x' }}> {/* MAGIC FIX */}
-                              <table className="w-full text-left min-w-[700px]"> {/* WIDE TABLE */}
-                                  <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-                                      <tr><th className="p-3">Total & Waktu</th><th className="p-3">Detail Item</th><th className="p-3 text-right">Aksi</th></tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-gray-100">
-                                      {recentTrx.map(trx => (
-                                          <tr key={trx.id} className="hover:bg-gray-50">
-                                              <td className="p-3 align-top"><p className="font-bold text-gray-900">Rp {trx.final_amount.toLocaleString()}</p><p className="text-[10px] text-gray-500 mt-1">{new Date(trx.created_at).toLocaleTimeString()}</p><span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">{trx.payment_method}</span></td>
-                                              <td className="p-3 align-top"><p className="text-xs text-gray-600 line-clamp-2 max-w-[200px]">{trx.items_summary}</p></td>
-                                              <td className="p-3 align-top text-right"><div className="flex justify-end gap-2"><button onClick={()=>handleReprint(trx)} className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200"><Printer size={16}/></button><button onClick={()=>initVoid(trx.id)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"><Trash2 size={16}/></button></div></td>
-                                          </tr>
-                                      ))}
-                                  </tbody>
-                              </table>
-                          </div>
+                  <div className="flex-none p-4 border-b flex justify-between items-center"><h3 className="flex items-center gap-2 font-bold text-gray-800"><History size={20}/> Riwayat Hari Ini</h3><button onClick={()=>setShowHistoryModal(false)} className="bg-gray-200 p-1.5 rounded-full hover:bg-gray-300"><X size={18}/></button></div>
+                  <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+                      {recentTrx.length === 0 ? <p className="text-center text-gray-400 text-sm py-10">Belum ada transaksi.</p> : (
+                          <>
+                              {/* MODE DESKTOP (TABLE) - HIDDEN ON MOBILE */}
+                              <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-200 bg-white">
+                                  <table className="w-full text-left">
+                                      <thead className="bg-gray-50 text-xs text-gray-500 uppercase"><tr><th className="p-3">Total</th><th className="p-3">Detail</th><th className="p-3 text-right">Aksi</th></tr></thead>
+                                      <tbody className="divide-y divide-gray-100">{recentTrx.map(trx => (
+                                          <tr key={trx.id} className="hover:bg-gray-50"><td className="p-3"><p className="font-bold">Rp {trx.final_amount.toLocaleString()}</p><span className="text-[10px] bg-blue-100 text-blue-700 px-1 rounded">{trx.payment_method}</span></td><td className="p-3 text-xs text-gray-600 line-clamp-2 max-w-[150px]">{trx.items_summary}</td><td className="p-3 text-right"><div className="flex justify-end gap-1"><button onClick={()=>handleReprint(trx)} className="p-1.5 bg-blue-100 rounded text-blue-600"><Printer size={14}/></button><button onClick={()=>initVoid(trx.id)} className="p-1.5 bg-red-100 rounded text-red-600"><Trash2 size={14}/></button></div></td></tr>
+                                      ))}</tbody>
+                                  </table>
+                              </div>
+
+                              {/* MODE MOBILE (CARDS) - SHOWN ONLY ON MOBILE */}
+                              <div className="md:hidden space-y-3">
+                                  {recentTrx.map(trx => (
+                                      <div key={trx.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                                          <div className="flex justify-between items-start mb-2">
+                                              <div>
+                                                  <h4 className="font-extrabold text-lg text-gray-900">Rp {trx.final_amount.toLocaleString()}</h4>
+                                                  <p className="text-[10px] text-gray-500">{new Date(trx.created_at).toLocaleTimeString()} • {trx.payment_method}</p>
+                                              </div>
+                                              {trx.customer_name && <span className="text-[9px] bg-emerald-50 text-emerald-600 px-2 py-1 rounded-full border border-emerald-100 font-bold">{trx.customer_name}</span>}
+                                          </div>
+                                          <div className="bg-gray-50 p-2 rounded-lg mb-3">
+                                              <p className="text-xs text-gray-600 leading-snug">{trx.items_summary}</p>
+                                          </div>
+                                          <div className="grid grid-cols-2 gap-2">
+                                              <button onClick={()=>handleReprint(trx)} className="py-2.5 bg-white border border-blue-200 text-blue-600 font-bold rounded-lg text-xs flex items-center justify-center gap-2 hover:bg-blue-50 active:scale-95 transition"><Printer size={16}/> Print Ulang</button>
+                                              <button onClick={()=>initVoid(trx.id)} className="py-2.5 bg-white border border-red-200 text-red-600 font-bold rounded-lg text-xs flex items-center justify-center gap-2 hover:bg-red-50 active:scale-95 transition"><Trash2 size={16}/> Batalkan</button>
+                                          </div>
+                                      </div>
+                                  ))}
+                              </div>
+                          </>
                       )}
-                      <p className="mt-3 text-[10px] text-center text-gray-400 flex items-center justify-center gap-1"><ArrowRightLeft size={12}/> Geser tabel untuk melihat menu aksi</p>
                   </div>
               </div>
           </div>
