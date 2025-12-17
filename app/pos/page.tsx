@@ -6,8 +6,8 @@ import { useRouter } from 'next/navigation';
 import { 
   Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, 
   Menu, Loader2, User, Users, X, Save, TrendingUp, Lock, Wallet, Percent, Gift, Key, QrCode, Banknote, LogOut, LayoutDashboard, Crown, ChevronRight, Zap, Eye, EyeOff, ShieldAlert, Settings, ShieldCheck, FileText, 
-  ClipboardList, MessageCircle, DollarSign, Calculator, Tag, ChevronUp, ChevronDown, History, Printer, AlertTriangle, UserCheck, CheckCircle, ArrowRightLeft 
-} from 'lucide-react'; // <--- ARROWRIGHTLEFT SUDAH DITAMBAHKAN DISINI
+  ClipboardList, MessageCircle, DollarSign, Calculator, Tag, ChevronUp, ChevronDown, History, Printer, AlertTriangle, UserCheck, CheckCircle, ArrowRightLeft
+} from 'lucide-react';
 import Logo from '@/components/Logo';
 
 export default function CashierPage() {
@@ -43,7 +43,7 @@ export default function CashierPage() {
   const [shiftClosedData, setShiftClosedData] = useState<any>(null);
   const [showSuccessCloseModal, setShowSuccessCloseModal] = useState(false);
 
-  // --- HISTORY STATE ---
+  // --- HISTORY STATE (ACCORDION) ---
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [recentTrx, setRecentTrx] = useState<any[]>([]);
   const [expandedTrxId, setExpandedTrxId] = useState<number | null>(null);
@@ -256,7 +256,7 @@ export default function CashierPage() {
   const prepareEndShift = async () => { if(!activeShift) return; const { data: trxs } = await supabase.from('transactions').select('*').gte('created_at', activeShift.start_time).eq('user_id', user.id); const totalSales = trxs?.reduce((a,c) => a + c.final_amount, 0) || 0; const cashSales = trxs?.filter(t => t.payment_method === 'CASH' && t.payment_status === 'PAID').reduce((a,c) => a + c.final_amount, 0) || 0; const nonCashSales = totalSales - cashSales; const expected = (activeShift.start_cash || 0) + cashSales; setShiftSummary({ totalSales, cashSales, nonCashSales, expected }); setShowMainMenu(false); setShowEndShiftModal(true); };
   const handlePrintShift = (actual: number, diff: number) => { const w = window.open('', '', 'width=400,height=600'); if (!w) return alert("Popup blocked!"); const cashierName = activeShift?.cashier_name || 'Admin'; const content = `<html><body style="font-family:'Courier New';font-size:10px;width:48mm"><div style="text-align:center;font-weight:bold">${storeName}<br/>LAPORAN TUTUP KASIR</div><hr/><div>Kasir: ${cashierName}</div><div>Buka: ${new Date(activeShift.start_time).toLocaleString()}</div><div>Tutup: ${new Date().toLocaleString()}</div><hr/><div style="display:flex;justify-content:space-between"><span>Modal Awal:</span><span>${activeShift.start_cash.toLocaleString()}</span></div><div style="display:flex;justify-content:space-between"><span>Omzet Tunai:</span><span>${shiftSummary.cashSales.toLocaleString()}</span></div><div style="display:flex;justify-content:space-between"><span>Omzet Lain:</span><span>${shiftSummary.nonCashSales.toLocaleString()}</span></div><hr/><div style="display:flex;justify-content:space-between;font-weight:bold"><span>Target Fisik:</span><span>${shiftSummary.expected.toLocaleString()}</span></div><div style="display:flex;justify-content:space-between;font-weight:bold"><span>Uang Fisik:</span><span>${actual.toLocaleString()}</span></div><div style="display:flex;justify-content:space-between;font-weight:bold"><span>Selisih:</span><span>${diff.toLocaleString()}</span></div><hr/><div style="text-align:center;margin-top:20px;margin-bottom:30px">( Tanda Tangan ${cashierName} )</div><div style="text-align:center;">--- END SHIFT ---</div><script>window.print()</script></body></html>`; w.document.write(content); w.document.close(); };
   const handleCloseShift = async (e: React.FormEvent) => { e.preventDefault(); const actual = Number(endCashInput.replace(/[^0-9]/g,'')); const diff = actual - shiftSummary.expected; const { error } = await supabase.from('cash_shifts').update({ end_time: new Date().toISOString(), end_cash_actual: actual, expected_cash: shiftSummary.expected, difference: diff, total_sales: shiftSummary.totalSales, total_cash_sales: shiftSummary.cashSales, status: 'CLOSED' }).eq('id', activeShift.id); if(error) return alert("Gagal: " + error.message); setShiftClosedData({ activeShift, shiftSummary, actual, diff, cashierName: activeShift?.cashier_name || 'Admin', closeTime: new Date().toLocaleString() }); setShowEndShiftModal(false); setShowSuccessCloseModal(true); };
-  const printClosedShiftReport = () => { if (!shiftClosedData) return; const w = window.open('', '', 'width=400,height=600'); if (!w) return alert("Popup blocked!"); const content = `<html><body style="font-family:'Courier New';font-size:10px;width:48mm"><div style="text-align:center;font-weight:bold">${storeName}<br/>LAPORAN TUTUP KASIR</div><hr/><div>Kasir: ${shiftClosedData.cashierName}</div><div>Buka: ${new Date(shiftClosedData.activeShift.start_time).toLocaleString()}</div><div>Tutup: ${shiftClosedData.closeTime}</div><hr/><div style="display:flex;justify-content:space-between"><span>Modal Awal:</span><span>${activeShift.start_cash.toLocaleString()}</span></div><div style="display:flex;justify-content:space-between"><span>Omzet Tunai:</span><span>${shiftSummary.cashSales.toLocaleString()}</span></div><div style="display:flex;justify-content:space-between"><span>Omzet Lain:</span><span>${shiftClosedData.shiftSummary.nonCashSales.toLocaleString()}</span></div><hr/><div style="display:flex;justify-content:space-between;font-weight:bold"><span>Target Fisik:</span><span>${shiftClosedData.shiftSummary.expected.toLocaleString()}</span></div><div style="display:flex;justify-content:space-between;font-weight:bold"><span>Uang Fisik:</span><span>${shiftClosedData.actual.toLocaleString()}</span></div><div style="display:flex;justify-content:space-between;font-weight:bold"><span>Selisih:</span><span>${shiftClosedData.diff.toLocaleString()}</span></div><hr/><div style="text-align:center;margin-top:20px;margin-bottom:30px">( Tanda Tangan )</div><div style="text-align:center;">--- END SHIFT ---</div><script>window.print()</script></body></html>`; w.document.write(content); w.document.close(); };
+  const printClosedShiftReport = () => { if (!shiftClosedData) return; const w = window.open('', '', 'width=400,height=600'); if (!w) return alert("Popup blocked!"); const content = `<html><body style="font-family:'Courier New';font-size:10px;width:48mm"><div style="text-align:center;font-weight:bold">${storeName}<br/>LAPORAN TUTUP KASIR</div><hr/><div>Kasir: ${shiftClosedData.cashierName}</div><div>Buka: ${new Date(shiftClosedData.activeShift.start_time).toLocaleString()}</div><div>Tutup: ${shiftClosedData.closeTime}</div><hr/><div style="display:flex;justify-content:space-between"><span>Modal Awal:</span><span>${activeShift.start_cash.toLocaleString()}</span></div><div style="display:flex;justify-content:space-between"><span>Omzet Tunai:</span><span>${shiftClosedData.shiftSummary.cashSales.toLocaleString()}</span></div><div style="display:flex;justify-content:space-between"><span>Omzet Lain:</span><span>${shiftClosedData.shiftSummary.nonCashSales.toLocaleString()}</span></div><hr/><div style="display:flex;justify-content:space-between;font-weight:bold"><span>Target Fisik:</span><span>${shiftClosedData.shiftSummary.expected.toLocaleString()}</span></div><div style="display:flex;justify-content:space-between;font-weight:bold"><span>Uang Fisik:</span><span>${shiftClosedData.actual.toLocaleString()}</span></div><div style="display:flex;justify-content:space-between;font-weight:bold"><span>Selisih:</span><span>${shiftClosedData.diff.toLocaleString()}</span></div><hr/><div style="text-align:center;margin-top:20px;margin-bottom:30px">( Tanda Tangan )</div><div style="text-align:center;">--- END SHIFT ---</div><script>window.print()</script></body></html>`; w.document.write(content); w.document.close(); };
 
   // --- SECURITY AUTH ---
   const initVoid = (id: number) => { setPendingAuth({ type: 'VOID', payload: id }); setPinInput(''); setShowPinModal(true); };
@@ -269,7 +269,7 @@ export default function CashierPage() {
   const handleAdminClick = () => { if (isAdminUnlocked) { router.push('/admin'); } else { setPendingAuth(null); setPinInput(''); setShowMainMenu(false); setShowPinModal(true); } };
   const handleLogout = async () => { await supabase.auth.signOut(); sessionStorage.clear(); router.push('/login'); };
   const handleLockApp = () => { if (!savedPin) return alert("PIN belum ditemukan."); if (confirm("Kunci Mode Kasir?")) { sessionStorage.setItem('is_admin_unlocked', 'false'); setIsAdminUnlocked(false); setShowMainMenu(false); setTimeout(() => alert("Aplikasi Terkunci."), 100); } };
-  const handleUpgradeClick = () => { window.open(`https://wa.me/6282177771224?text=${encodeURIComponent("Halo, saya ingin upgrade PRO.")}`, '_blank'); };
+  const handleUpgradeClick = () => { window.open(`https://wa.me/6281234567890?text=${encodeURIComponent("Halo, saya ingin upgrade PRO.")}`, '_blank'); };
   const toggleExpand = (id: number) => { setExpandedTrxId(expandedTrxId === id ? null : id); };
 
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-emerald-600" size={40}/></div>;
@@ -383,7 +383,8 @@ export default function CashierPage() {
       </div>
 
       {/* --- MENU & MODALS --- */}
-      {/* ... (Previous Modals stay the same) ... */}
+      {/* ... (Previous Modals same as before) ... */}
+      
       {showMainMenu && (
           <div className="fixed inset-0 bg-black/60 z-[100] flex justify-start">
               <div className="bg-white w-72 h-full shadow-2xl p-6 flex flex-col animate-in slide-in-from-left duration-300">
@@ -396,26 +397,35 @@ export default function CashierPage() {
                       {isPro && isAdminUnlocked && savedPin && (<button onClick={handleLockApp} className="w-full flex items-center justify-between p-3 rounded-xl bg-red-50 hover:bg-red-100 transition border border-red-100"><div className="flex items-center gap-3 font-bold text-red-600"><ShieldAlert size={20}/> Kunci (Mode Kasir)</div><Lock size={16} className="text-red-400"/></button>)}
                       {!isPro && (<button onClick={handleUpgradeClick} className="w-full flex items-center justify-between p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-100 hover:shadow-sm transition"><div className="flex items-center gap-3 font-bold text-orange-700"><Crown size={20}/> Upgrade PRO</div><Zap size={16} className="text-orange-400 animate-pulse"/></button>)}
                   </div>
-                  <div className="border-t border-gray-100 pt-4"><button onClick={handleLogout} className="w-full flex items-center gap-3 p-3 rounded-xl text-gray-500 font-bold hover:bg-gray-50 transition"><LogOut size={20}/> Keluar Aplikasi</button><p className="text-[10px] text-center text-gray-300 mt-4">Versi 2.9.0 (Accordion Fix)</p></div>
+                  <div className="border-t border-gray-100 pt-4"><button onClick={handleLogout} className="w-full flex items-center gap-3 p-3 rounded-xl text-gray-500 font-bold hover:bg-gray-50 transition"><LogOut size={20}/> Keluar Aplikasi</button><p className="text-[10px] text-center text-gray-300 mt-4">Versi 3.0.0 (Debug Red)</p></div>
               </div>
               <div className="flex-1" onClick={()=>setShowMainMenu(false)}></div>
           </div>
       )}
+      
       {showPinModal && (<div className="fixed inset-0 bg-black/60 z-[100] flex justify-center items-center p-4 backdrop-blur-sm"><div className="bg-white w-full max-w-xs p-6 rounded-2xl shadow-2xl relative text-center"><div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600"><Lock size={24}/></div><h3 className="font-bold text-lg text-gray-800">Otorisasi Diperlukan</h3><p className="text-sm text-gray-500 mb-4">Masukkan PIN Admin untuk konfirmasi tindakan ini.</p><form onSubmit={handlePinSubmit}><input type="password" autoFocus maxLength={6} value={pinInput} onChange={e => setPinInput(e.target.value)} className="w-full p-3 bg-gray-100 rounded-xl text-center font-bold text-xl tracking-widest outline-emerald-500 mb-4" placeholder="••••••"/><div className="flex gap-2"><button type="button" onClick={()=>{setShowPinModal(false); setPendingAuth(null);}} className="flex-1 py-2 bg-gray-200 text-gray-600 font-bold rounded-xl">Batal</button><button type="submit" className="flex-1 py-2 bg-gray-900 text-white font-bold rounded-xl">Konfirmasi</button></div></form></div></div>)}
       {showShiftModal && (<div className="fixed inset-0 bg-black/80 z-[100] flex justify-center items-center p-4 backdrop-blur-md"><div className="bg-white w-full max-w-sm p-8 rounded-3xl shadow-2xl text-center"><div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-600"><Wallet size={32}/></div><h2 className="text-2xl font-extrabold text-gray-900 mb-2">Buka Kasir</h2><p className="text-gray-500 mb-6">Siapkan laci kasir Anda.</p><form onSubmit={handleOpenShift}><div className="space-y-4"><div className="relative"><UserCheck className="absolute left-4 top-3.5 text-gray-400" size={18}/><input type="text" required value={cashierNameInput} onChange={e=>setCashierNameInput(e.target.value)} className="w-full pl-12 p-3 bg-gray-50 rounded-xl border border-gray-200 font-bold text-gray-800" placeholder="Nama Kasir Bertugas"/></div><div className="relative"><DollarSign className="absolute left-4 top-3.5 text-gray-400" size={18}/><input type="number" required autoFocus value={startCashInput} onChange={e=>setStartCashInput(e.target.value)} className="w-full pl-12 p-3 bg-gray-50 rounded-xl border border-gray-200 font-bold text-gray-800" placeholder="Modal Awal (Rp)"/></div></div><button className="w-full py-4 mt-6 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl shadow-lg transition text-lg">Buka Shift</button></form></div></div>)}
       {showEndShiftModal && shiftSummary && (<div className="fixed inset-0 bg-black/80 z-[100] flex justify-center items-center p-4 backdrop-blur-md"><div className="bg-white w-full max-w-md p-0 rounded-3xl shadow-2xl overflow-hidden"><div className="bg-gray-900 p-6 text-white text-center"><h2 className="text-xl font-bold">Rekapitulasi Kasir</h2><p className="text-sm opacity-80">{new Date().toLocaleDateString()}</p></div><div className="p-6 space-y-4"><div className="flex justify-between text-sm"><span>Modal Awal</span><span className="font-bold">Rp {activeShift.start_cash.toLocaleString()}</span></div><div className="flex justify-between text-sm"><span>Penjualan Tunai</span><span className="font-bold text-emerald-600">+ Rp {shiftSummary.cashSales.toLocaleString()}</span></div><div className="flex justify-between text-sm"><span>Non-Tunai (QRIS/Trf)</span><span className="font-bold text-blue-600">Rp {shiftSummary.nonCashSales.toLocaleString()}</span></div><hr/><div className="flex justify-between text-lg font-bold bg-gray-50 p-3 rounded-xl border border-gray-200"><span>Target Uang Fisik</span><span>Rp {shiftSummary.expected.toLocaleString()}</span></div><div className="pt-2"><label className="text-xs font-bold text-gray-500 block mb-2 text-center">Hitung & Masukkan Uang Fisik Aktual</label><input type="number" required autoFocus value={endCashInput} onChange={e=>setEndCashInput(e.target.value)} className="w-full p-4 bg-yellow-50 border-2 border-yellow-200 rounded-2xl text-2xl font-bold text-center outline-none text-yellow-800" placeholder="0"/></div><div className="flex gap-3 pt-2"><button type="button" onClick={()=>setShowEndShiftModal(false)} className="flex-1 py-3 bg-gray-100 font-bold rounded-xl">Batal</button><button onClick={handleCloseShift} className="flex-[2] py-3 bg-red-600 text-white font-bold rounded-xl shadow-lg">Cetak & Tutup</button></div></div></div></div>)}
       {showSuccessCloseModal && (<div className="fixed inset-0 bg-black/90 z-[110] flex justify-center items-center p-4 backdrop-blur-md"><div className="bg-white w-full max-w-sm p-8 rounded-3xl shadow-2xl text-center animate-in zoom-in duration-300"><div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle size={40} className="text-green-600"/></div><h2 className="text-2xl font-extrabold text-gray-900 mb-2">Shift Berhasil Ditutup!</h2><p className="text-gray-500 mb-8">Data keuangan telah diamankan.</p><div className="space-y-3"><button onClick={printClosedShiftReport} className="w-full py-4 bg-gray-900 hover:bg-black text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 transition"><Printer size={20}/> Cetak Laporan</button><button onClick={() => { setShowSuccessCloseModal(false); handleLogout(); }} className="w-full py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-2xl transition">Keluar (Logout)</button></div></div></div>)}
 
-      {/* HISTORY MODAL (ACCORDION STYLE FOR MOBILE - TABLE FOR DESKTOP) */}
+      {/* HISTORY MODAL (FIXED ACCORDION) */}
       {showHistoryModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
               <div className="flex flex-col w-full max-w-md bg-white shadow-2xl rounded-2xl max-h-[85vh] md:max-w-3xl">
-                  <div className="flex-none p-4 border-b flex justify-between items-center"><h3 className="flex items-center gap-2 font-bold text-gray-800"><History size={20}/> Riwayat Hari Ini</h3><button onClick={()=>setShowHistoryModal(false)} className="bg-gray-200 p-1.5 rounded-full hover:bg-gray-300"><X size={18}/></button></div>
+                  {/* HEADER MERAH UNTUK DEBUGGING */}
+                  <div className="flex-none p-4 border-b flex justify-between items-center bg-red-500 text-white rounded-t-2xl">
+                      <h3 className="flex items-center gap-2 font-bold"><History size={20}/> Riwayat Hari Ini</h3>
+                      <button onClick={()=>setShowHistoryModal(false)} className="bg-white/20 p-1.5 rounded-full hover:bg-white/30"><X size={18}/></button>
+                  </div>
+                  
+                  {/* DEBUG INFO ONLY ON MOBILE */}
+                  <div className="md:hidden bg-yellow-100 text-yellow-800 text-[10px] text-center py-1 font-bold">MODE HP AKTIF - KLIK LIST UNTUK DETAIL</div>
+
                   <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
                       {recentTrx.length === 0 ? <p className="text-center text-gray-400 text-sm py-10">Belum ada transaksi.</p> : (
                           <>
-                              {/* 1. DESKTOP VIEW (TABLE) - Only visible on LG+ screens (Laptop) */}
-                              <div className="hidden lg:block overflow-x-auto rounded-xl border border-gray-200 bg-white">
+                              {/* 1. DESKTOP VIEW (TABLE) */}
+                              <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-200 bg-white">
                                   <table className="w-full text-left">
                                       <thead className="bg-gray-50 text-xs text-gray-500 uppercase"><tr><th className="p-3">Total</th><th className="p-3">Detail</th><th className="p-3 text-right">Aksi</th></tr></thead>
                                       <tbody className="divide-y divide-gray-100">{recentTrx.map(trx => (
@@ -424,37 +434,37 @@ export default function CashierPage() {
                                   </table>
                               </div>
 
-                              {/* 2. MOBILE & TABLET VIEW (ACCORDION LIST) - Visible on anything smaller than LG */}
-                              <div className="lg:hidden space-y-2">
+                              {/* 2. MOBILE VIEW (ACCORDION - CLICKABLE) */}
+                              <div className="md:hidden space-y-2">
                                   {recentTrx.map(trx => (
                                       <div key={trx.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm transition-all duration-200">
-                                          {/* HEADER (ALWAYS VISIBLE) - CLICK TO TOGGLE */}
-                                          <div onClick={() => toggleExpand(trx.id)} className="p-3 flex justify-between items-center cursor-pointer bg-white active:bg-gray-50">
+                                          {/* HEADER - KLIK DISINI */}
+                                          <div onClick={() => setExpandedTrxId(expandedTrxId === trx.id ? null : trx.id)} className="p-4 flex justify-between items-center cursor-pointer bg-white active:bg-gray-100">
                                               <div className="flex items-center gap-3">
-                                                  <div className={`p-2 rounded-lg ${trx.payment_method==='HUTANG'?'bg-red-100 text-red-600':'bg-emerald-100 text-emerald-600'}`}>
-                                                      {trx.payment_method==='HUTANG' ? <AlertTriangle size={16}/> : <CheckCircle size={16}/>}
+                                                  <div className={`p-2 rounded-full ${trx.payment_method==='HUTANG'?'bg-red-100 text-red-600':'bg-emerald-100 text-emerald-600'}`}>
+                                                      {trx.payment_method==='HUTANG' ? <AlertTriangle size={18}/> : <CheckCircle size={18}/>}
                                                   </div>
                                                   <div>
-                                                      <p className="font-bold text-gray-900 text-sm">Rp {trx.final_amount.toLocaleString()}</p>
-                                                      <p className="text-[10px] text-gray-400">{new Date(trx.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} • {trx.payment_method}</p>
+                                                      <p className="font-extrabold text-gray-900 text-base">Rp {trx.final_amount.toLocaleString()}</p>
+                                                      <p className="text-xs text-gray-500 font-medium">{new Date(trx.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} • {trx.payment_method}</p>
                                                   </div>
                                               </div>
-                                              <div className="text-gray-400">
-                                                  {expandedTrxId === trx.id ? <ChevronUp size={20}/> : <ChevronDown size={20}/>}
+                                              <div className={`text-gray-400 transition-transform duration-200 ${expandedTrxId === trx.id ? 'rotate-180' : ''}`}>
+                                                  <ChevronDown size={24}/>
                                               </div>
                                           </div>
 
-                                          {/* BODY (EXPANDABLE) */}
+                                          {/* ISI (MUNCUL SETELAH KLIK) */}
                                           {expandedTrxId === trx.id && (
-                                              <div className="bg-gray-50 p-3 border-t border-gray-100 text-xs animate-in slide-in-from-top-2 duration-200">
-                                                  <div className="mb-3 space-y-1">
-                                                      <p className="font-bold text-gray-500 text-[10px] uppercase">Detail Item</p>
-                                                      <p className="text-gray-700 leading-relaxed">{trx.items_summary}</p>
-                                                      {trx.customer_name && <p className="text-emerald-600 font-bold mt-1">Pelanggan: {trx.customer_name}</p>}
+                                              <div className="bg-gray-50 p-4 border-t border-gray-100 animate-in slide-in-from-top-2 duration-200">
+                                                  <div className="mb-4 space-y-2">
+                                                      <p className="font-bold text-gray-500 text-[10px] uppercase tracking-wide">Detail Pesanan</p>
+                                                      <p className="text-sm text-gray-800 leading-relaxed font-medium">{trx.items_summary}</p>
+                                                      {trx.customer_name && <p className="text-xs text-emerald-600 font-bold bg-emerald-50 px-2 py-1 rounded-lg inline-block border border-emerald-100">Pelanggan: {trx.customer_name}</p>}
                                                   </div>
-                                                  <div className="grid grid-cols-2 gap-2 mt-2">
-                                                      <button onClick={()=>handleReprint(trx)} className="py-2 bg-white border border-blue-200 text-blue-600 font-bold rounded-lg flex items-center justify-center gap-2 hover:bg-blue-50"><Printer size={14}/> Print</button>
-                                                      <button onClick={()=>initVoid(trx.id)} className="py-2 bg-white border border-red-200 text-red-600 font-bold rounded-lg flex items-center justify-center gap-2 hover:bg-red-50"><Trash2 size={14}/> Hapus</button>
+                                                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-200">
+                                                      <button onClick={()=>handleReprint(trx)} className="py-3 bg-white border-2 border-blue-100 text-blue-600 font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-blue-50 transition shadow-sm"><Printer size={18}/> Cetak Struk</button>
+                                                      <button onClick={()=>initVoid(trx.id)} className="py-3 bg-white border-2 border-red-100 text-red-600 font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-red-50 transition shadow-sm"><Trash2 size={18}/> Hapus</button>
                                                   </div>
                                               </div>
                                           )}
