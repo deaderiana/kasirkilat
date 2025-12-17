@@ -27,6 +27,9 @@ export default function CashierPage() {
   const [pinInput, setPinInput] = useState('');
   const [savedPin, setSavedPin] = useState<string | null>(null); 
   
+  // --- SECURITY ACTION STATE (NEW) ---
+  const [pendingAuth, setPendingAuth] = useState<{type: 'VOID'|'DISC_GLOBAL'|'DISC_ITEM'|'LOGIN', payload?: any} | null>(null);
+
   // --- SHIFT STATE ---
   const [activeShift, setActiveShift] = useState<any>(null); 
   const [showShiftModal, setShowShiftModal] = useState(false); 
@@ -43,7 +46,6 @@ export default function CashierPage() {
   // --- HISTORY STATE ---
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [recentTrx, setRecentTrx] = useState<any[]>([]);
-  const [voidAuthId, setVoidAuthId] = useState<number | null>(null);
 
   // --- UI STATE ---
   const [revealMargin, setRevealMargin] = useState(false); 
@@ -140,15 +142,13 @@ export default function CashierPage() {
     setFilteredProducts(result);
   }, [activeCategory, searchQuery, products]);
 
-  // --- CART LOGIC (STRICT STOCK GUARD) ---
+  // --- CART LOGIC ---
   const resetPaymentState = () => { setPaymentAmount(''); setChange(0); setDiscountPercent(''); setPaymentMethod('CASH'); };
   
   const addToCart = (product: any) => { 
-      // STRICT CHECK: Hitung total qty item ini di keranjang saat ini
       const existingItem = cart.find(item => item.id === product.id);
       const currentQty = existingItem ? existingItem.qty : 0;
       
-      // Jika stok habis atau permintaan melebihi stok
       if (product.stock <= 0 || currentQty + 1 > product.stock) {
           alert(`🚫 Stok Habis/Tidak Cukup! Tersisa: ${product.stock}`);
           return;
@@ -167,7 +167,6 @@ export default function CashierPage() {
       const product = products.find(p => p.id === productId);
       const itemInCart = cart.find(i => i.id === productId);
       
-      // STRICT CHECK UPDATE
       if (product && itemInCart) {
           if (delta > 0 && itemInCart.qty + delta > product.stock) {
               alert(`🚫 Stok Mentok! Tersisa: ${product.stock}`);
@@ -178,9 +177,6 @@ export default function CashierPage() {
       setCart(prev => prev.map(item => { if (item.id === productId) { const newQty = item.qty + delta; return newQty > 0 ? { ...item, qty: newQty } : item; } return item; })); 
       setPaymentAmount(''); setChange(0); 
   };
-
-  const openItemDiscount = (item: any) => { setDiscItem(item); setDiscValueInput(''); setDiscType('RP'); setShowItemDiscModal(true); };
-  const saveItemDiscount = (e: React.FormEvent) => { e.preventDefault(); if (!discItem) return; const val = Number(discValueInput) || 0; let finalDiscountRp = 0; if (discType === 'PERCENT') { const safePercent = Math.min(val, 100); finalDiscountRp = Math.floor((discItem.price * safePercent) / 100); } else { finalDiscountRp = Math.min(val, discItem.price); } setCart(prev => prev.map(i => i.id === discItem.id ? { ...i, item_discount: finalDiscountRp } : i)); setPaymentAmount(''); setChange(0); setShowItemDiscModal(false); };
 
   // --- CALCULATIONS ---
   const subTotal = cart.reduce((acc, item) => acc + ((item.price - (item.item_discount || 0)) * item.qty), 0);
@@ -193,7 +189,70 @@ export default function CashierPage() {
   const marginValue = subTotal - totalCost - discountValue;
 
   const handlePaymentInput = (val: string) => { setPaymentAmount(val); const num = Number(val); if (!isNaN(num)) setChange(num - grandTotal); };
-  const handleDiscountInput = (val: string) => { let num = Number(val); if (num > 100) num = 100; if (num < 0) num = 0; setDiscountPercent(val); const newDiscVal = Math.floor((subTotal * num) / 100); const newTaxable = Math.max(0, subTotal - newDiscVal); const newTax = Math.floor(newTaxable * (taxRate / 100)); const newGrandTotal = newTaxable + newTax; const numPay = Number(paymentAmount) || 0; if (numPay > 0) setChange(numPay - newGrandTotal); };
+
+  // --- DISCOUNT SECURITY LOGIC (FIXED) ---
+  const handleDiscountInput = (val: string) => { 
+      let num = Number(val); 
+      if (num > 100) num = 100; if (num < 0) num = 0;
+      
+      // Jika diskon > 50%, minta PIN
+      if (num > 50) {
+          setPendingAuth({ type: 'DISC_GLOBAL', payload: val });
+          setPinInput('');
+          setShowPinModal(true);
+      } else {
+          applyGlobalDiscount(val);
+      }
+  };
+
+  const applyGlobalDiscount = (val: string) => {
+      setDiscountPercent(val); 
+      const num = Number(val);
+      const newDiscVal = Math.floor((subTotal * num) / 100);
+      const newTaxable = Math.max(0, subTotal - newDiscVal);
+      const newTax = Math.floor(newTaxable * (taxRate / 100));
+      const newGrandTotal = newTaxable + newTax;
+      const numPay = Number(paymentAmount) || 0;
+      if (numPay > 0) setChange(numPay - newGrandTotal);
+  };
+
+  // --- ITEM DISCOUNT SECURITY LOGIC (FIXED) ---
+  const openItemDiscount = (item: any) => { setDiscItem(item); setDiscValueInput(''); setDiscType('RP'); setShowItemDiscModal(true); };
+  
+  const saveItemDiscount = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!discItem) return;
+      const val = Number(discValueInput) || 0;
+      
+      let calculatedPercent = 0;
+      if (discType === 'PERCENT') calculatedPercent = val;
+      else calculatedPercent = (val / discItem.price) * 100;
+
+      if (calculatedPercent > 50) {
+          setPendingAuth({ type: 'DISC_ITEM', payload: { id: discItem.id, val: val, type: discType } });
+          setPinInput('');
+          setShowPinModal(true);
+          setShowItemDiscModal(false);
+      } else {
+          applyItemDiscount(discItem.id, val, discType);
+          setShowItemDiscModal(false);
+      }
+  };
+
+  const applyItemDiscount = (id: number, val: number, type: 'RP'|'PERCENT') => {
+      let finalDiscountRp = 0;
+      const item = cart.find(i => i.id === id);
+      if(!item) return;
+
+      if (type === 'PERCENT') {
+          const safePercent = Math.min(val, 100);
+          finalDiscountRp = Math.floor((item.price * safePercent) / 100);
+      } else {
+          finalDiscountRp = Math.min(val, item.price);
+      }
+      setCart(prev => prev.map(i => i.id === id ? { ...i, item_discount: finalDiscountRp } : i));
+      setPaymentAmount(''); setChange(0); 
+  };
 
   // --- CHECKOUT & TRANSACTION LOGIC ---
   const handleCheckoutClick = async (shouldSendWA: boolean) => {
@@ -244,7 +303,7 @@ export default function CashierPage() {
 
   const handleProSubmit = async () => { if (selectedCustomer) processTransaction(selectedCustomer.phone, selectedCustomer.name, selectedCustomer.id); else { if (!newCustomerForm.name || (sendWaAfterSave && !newCustomerForm.phone)) return alert("Nama pelanggan wajib diisi!"); const { data, error } = await supabase.from('customers').insert([{ user_id: user.id, name: newCustomerForm.name, phone: newCustomerForm.phone || '-', points: 0 }]).select().single(); if (error) return alert("Gagal: " + error.message); processTransaction(newCustomerForm.phone || '', newCustomerForm.name, data.id); setCustomers(prev => [...prev, data]); } };
 
-  // --- SHIFT LOGIC ---
+  // --- SHIFT HANDLERS ---
   const handleOpenShift = async (e: React.FormEvent) => {
       e.preventDefault();
       const modal = Number(startCashInput.replace(/[^0-9]/g,''));
@@ -268,6 +327,14 @@ export default function CashierPage() {
       setShowEndShiftModal(true);
   };
 
+  const handlePrintShift = (actual: number, diff: number) => {
+      const w = window.open('', '', 'width=400,height=600'); 
+      if (!w) return alert("Popup blocked!");
+      const cashierName = activeShift?.cashier_name || 'Admin';
+      const content = `<html><body style="font-family:'Courier New';font-size:10px;width:48mm"><div style="text-align:center;font-weight:bold">${storeName}<br/>LAPORAN TUTUP KASIR</div><hr/><div>Kasir: ${cashierName}</div><div>Buka: ${new Date(activeShift.start_time).toLocaleString()}</div><div>Tutup: ${new Date().toLocaleString()}</div><hr/><div style="display:flex;justify-content:space-between"><span>Modal Awal:</span><span>${activeShift.start_cash.toLocaleString()}</span></div><div style="display:flex;justify-content:space-between"><span>Omzet Tunai:</span><span>${shiftSummary.cashSales.toLocaleString()}</span></div><div style="display:flex;justify-content:space-between"><span>Omzet Lain:</span><span>${shiftSummary.nonCashSales.toLocaleString()}</span></div><hr/><div style="display:flex;justify-content:space-between;font-weight:bold"><span>Target Fisik:</span><span>${shiftSummary.expected.toLocaleString()}</span></div><div style="display:flex;justify-content:space-between;font-weight:bold"><span>Uang Fisik:</span><span>${actual.toLocaleString()}</span></div><div style="display:flex;justify-content:space-between;font-weight:bold"><span>Selisih:</span><span>${diff.toLocaleString()}</span></div><hr/><div style="text-align:center;margin-top:20px;margin-bottom:30px">( Tanda Tangan ${cashierName} )</div><div style="text-align:center;">--- END SHIFT ---</div><script>window.print()</script></body></html>`;
+      w.document.write(content); w.document.close();
+  };
+
   const handleCloseShift = async (e: React.FormEvent) => {
       e.preventDefault();
       const actual = Number(endCashInput.replace(/[^0-9]/g,''));
@@ -287,16 +354,48 @@ export default function CashierPage() {
       w.document.write(content); w.document.close();
   };
 
-  // --- ACTIONS ---
-  const handleUpgradeClick = () => { window.open(`https://wa.me/6282177771224?text=${encodeURIComponent("Halo, saya ingin upgrade PRO.")}`, '_blank'); };
+  // --- SECURITY AUTH HANDLER (UPDATED) ---
+  const initVoid = (id: number) => { 
+      setPendingAuth({ type: 'VOID', payload: id });
+      setPinInput(''); 
+      setShowPinModal(true); 
+  };
+
+  const handlePinSubmit = (e: React.FormEvent) => { 
+      e.preventDefault(); 
+      if (pinInput === savedPin) { 
+          // Sukses PIN -> Cek jenis actionnya apa
+          if (pendingAuth) {
+              if (pendingAuth.type === 'VOID') executeVoid(pendingAuth.payload);
+              if (pendingAuth.type === 'DISC_GLOBAL') applyGlobalDiscount(pendingAuth.payload);
+              if (pendingAuth.type === 'DISC_ITEM') applyItemDiscount(pendingAuth.payload.id, pendingAuth.payload.val, pendingAuth.payload.type);
+              
+              setPendingAuth(null);
+              setShowPinModal(false);
+          } else {
+              // Default Login Action
+              sessionStorage.setItem('is_admin_unlocked', 'true'); 
+              setIsAdminUnlocked(true); 
+              setShowPinModal(false); 
+              alert("Mode Owner Terbuka! ✅"); 
+          }
+      } else { alert("PIN Salah! ❌"); } 
+  };
+
+  const executeVoid = async (id: number) => { 
+      try { const { data: items } = await supabase.from('transaction_items').select('*').eq('transaction_id', id); 
+      if (items) { for (const item of items) { const { data: prod } = await supabase.from('products').select('stock').eq('id', item.product_id).single(); if(prod) await supabase.from('products').update({ stock: prod.stock + item.qty }).eq('id', item.product_id); } } 
+      await supabase.from('transactions').delete().eq('id', id); alert("Transaksi Dibatalkan."); fetchRecentHistory(); } catch(e) { alert("Gagal Void"); } 
+  };
+
+  // --- HELPERS ---
   const fetchRecentHistory = async () => { if(!activeShift) return; setAuthLoading(true); const { data } = await supabase.from('transactions').select('*').gte('created_at', activeShift.start_time).eq('user_id', user.id).order('created_at', { ascending: false }).limit(20); setRecentTrx(data || []); setAuthLoading(false); setShowHistoryModal(true); };
   const handleReprint = (trx: any) => { const w = window.open('', '', 'width=400,height=600'); if (!w) return alert("Popup blocked!"); const items = trx.items_summary.split(', ').map((i: string) => `<div>${i}</div>`).join(''); const cashierName = activeShift?.cashier_name || 'Admin'; const content = `<html><body style="font-family:'Courier New';font-size:10px;width:48mm"><div style="text-align:center;font-weight:bold">${storeName}<br/>(REPRINT)</div><hr/><div>Kasir: ${cashierName}</div><div>${new Date(trx.created_at).toLocaleString()}</div><hr/>${items}<hr/><div style="display:flex;justify-content:space-between"><span>TOTAL</span><span>${trx.final_amount.toLocaleString()}</span></div><div style="text-align:center;margin-top:10px">Terima Kasih</div><script>window.print()</script></body></html>`; w.document.write(content); w.document.close(); };
-  const initVoid = (id: number) => { setVoidAuthId(id); setPinInput(''); setShowPinModal(true); };
-  const executeVoid = async () => { try { const { data: items } = await supabase.from('transaction_items').select('*').eq('transaction_id', voidAuthId); if (items) { for (const item of items) { const { data: prod } = await supabase.from('products').select('stock').eq('id', item.product_id).single(); if(prod) await supabase.from('products').update({ stock: prod.stock + item.qty }).eq('id', item.product_id); } } await supabase.from('transactions').delete().eq('id', voidAuthId); alert("Transaksi Dibatalkan."); setVoidAuthId(null); fetchRecentHistory(); } catch(e) { alert("Gagal Void"); } };
-  const handlePinSubmit = (e: React.FormEvent) => { e.preventDefault(); if (pinInput === savedPin) { if (voidAuthId) { executeVoid(); setShowPinModal(false); } else { sessionStorage.setItem('is_admin_unlocked', 'true'); setIsAdminUnlocked(true); setShowPinModal(false); alert("Mode Owner Terbuka! ✅"); } } else { alert("PIN Salah! ❌"); } };
-  const handleAdminClick = () => { if (isAdminUnlocked) { router.push('/admin'); } else { setPinInput(''); setVoidAuthId(null); setShowMainMenu(false); setShowPinModal(true); } };
+  
+  const handleAdminClick = () => { if (isAdminUnlocked) { router.push('/admin'); } else { setPendingAuth(null); setPinInput(''); setShowMainMenu(false); setShowPinModal(true); } };
   const handleLogout = async () => { await supabase.auth.signOut(); sessionStorage.clear(); router.push('/login'); };
   const handleLockApp = () => { if (!savedPin) return alert("PIN belum ditemukan."); if (confirm("Kunci Mode Kasir?")) { sessionStorage.setItem('is_admin_unlocked', 'false'); setIsAdminUnlocked(false); setShowMainMenu(false); setTimeout(() => alert("Aplikasi Terkunci."), 100); } };
+  const handleUpgradeClick = () => { window.open(`https://wa.me/6282177771224?text=${encodeURIComponent("Halo, saya ingin upgrade PRO.")}`, '_blank'); };
 
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-emerald-600" size={40}/></div>;
 
@@ -422,45 +521,55 @@ export default function CashierPage() {
                       {isPro && isAdminUnlocked && savedPin && (<button onClick={handleLockApp} className="w-full flex items-center justify-between p-3 rounded-xl bg-red-50 hover:bg-red-100 transition border border-red-100"><div className="flex items-center gap-3 font-bold text-red-600"><ShieldAlert size={20}/> Kunci (Mode Kasir)</div><Lock size={16} className="text-red-400"/></button>)}
                       {!isPro && (<button onClick={handleUpgradeClick} className="w-full flex items-center justify-between p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-100 hover:shadow-sm transition"><div className="flex items-center gap-3 font-bold text-orange-700"><Crown size={20}/> Upgrade PRO</div><Zap size={16} className="text-orange-400 animate-pulse"/></button>)}
                   </div>
-                  <div className="border-t border-gray-100 pt-4"><button onClick={handleLogout} className="w-full flex items-center gap-3 p-3 rounded-xl text-gray-500 font-bold hover:bg-gray-50 transition"><LogOut size={20}/> Keluar Aplikasi</button><p className="text-[10px] text-center text-gray-300 mt-4">Versi 1.9.6 (StockGuard Fix)</p></div>
+                  <div className="border-t border-gray-100 pt-4"><button onClick={handleLogout} className="w-full flex items-center gap-3 p-3 rounded-xl text-gray-500 font-bold hover:bg-gray-50 transition"><LogOut size={20}/> Keluar Aplikasi</button><p className="text-[10px] text-center text-gray-300 mt-4">Versi 2.0.0 (Secure & Fix)</p></div>
               </div>
               <div className="flex-1" onClick={()=>setShowMainMenu(false)}></div>
           </div>
       )}
-      {showPinModal && (<div className="fixed inset-0 bg-black/60 z-[100] flex justify-center items-center p-4 backdrop-blur-sm"><div className="bg-white w-full max-w-xs p-6 rounded-2xl shadow-2xl relative text-center"><div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600"><Lock size={24}/></div><h3 className="font-bold text-lg text-gray-800">Mode Kasir Aktif</h3><p className="text-sm text-gray-500 mb-4">Masukkan PIN Admin untuk konfirmasi.</p><form onSubmit={handlePinSubmit}><input type="password" autoFocus maxLength={6} value={pinInput} onChange={e => setPinInput(e.target.value)} className="w-full p-3 bg-gray-100 rounded-xl text-center font-bold text-xl tracking-widest outline-emerald-500 mb-4" placeholder="••••••"/><div className="flex gap-2"><button type="button" onClick={()=>{setShowPinModal(false); setVoidAuthId(null);}} className="flex-1 py-2 bg-gray-200 text-gray-600 font-bold rounded-xl">Batal</button><button type="submit" className="flex-1 py-2 bg-gray-900 text-white font-bold rounded-xl">Konfirmasi</button></div></form></div></div>)}
+      {showPinModal && (<div className="fixed inset-0 bg-black/60 z-[100] flex justify-center items-center p-4 backdrop-blur-sm"><div className="bg-white w-full max-w-xs p-6 rounded-2xl shadow-2xl relative text-center"><div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600"><Lock size={24}/></div><h3 className="font-bold text-lg text-gray-800">Otorisasi Diperlukan</h3><p className="text-sm text-gray-500 mb-4">Masukkan PIN Admin untuk konfirmasi tindakan ini.</p><form onSubmit={handlePinSubmit}><input type="password" autoFocus maxLength={6} value={pinInput} onChange={e => setPinInput(e.target.value)} className="w-full p-3 bg-gray-100 rounded-xl text-center font-bold text-xl tracking-widest outline-emerald-500 mb-4" placeholder="••••••"/><div className="flex gap-2"><button type="button" onClick={()=>{setShowPinModal(false); setPendingAuth(null);}} className="flex-1 py-2 bg-gray-200 text-gray-600 font-bold rounded-xl">Batal</button><button type="submit" className="flex-1 py-2 bg-gray-900 text-white font-bold rounded-xl">Konfirmasi</button></div></form></div></div>)}
       {showShiftModal && (<div className="fixed inset-0 bg-black/80 z-[100] flex justify-center items-center p-4 backdrop-blur-md"><div className="bg-white w-full max-w-sm p-8 rounded-3xl shadow-2xl text-center"><div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-600"><Wallet size={32}/></div><h2 className="text-2xl font-extrabold text-gray-900 mb-2">Buka Kasir</h2><p className="text-gray-500 mb-6">Siapkan laci kasir Anda.</p><form onSubmit={handleOpenShift}><div className="space-y-4"><div className="relative"><UserCheck className="absolute left-4 top-3.5 text-gray-400" size={18}/><input type="text" required value={cashierNameInput} onChange={e=>setCashierNameInput(e.target.value)} className="w-full pl-12 p-3 bg-gray-50 rounded-xl border border-gray-200 font-bold text-gray-800" placeholder="Nama Kasir Bertugas"/></div><div className="relative"><DollarSign className="absolute left-4 top-3.5 text-gray-400" size={18}/><input type="number" required autoFocus value={startCashInput} onChange={e=>setStartCashInput(e.target.value)} className="w-full pl-12 p-3 bg-gray-50 rounded-xl border border-gray-200 font-bold text-gray-800" placeholder="Modal Awal (Rp)"/></div></div><button className="w-full py-4 mt-6 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl shadow-lg transition text-lg">Buka Shift</button></form></div></div>)}
       {showEndShiftModal && shiftSummary && (<div className="fixed inset-0 bg-black/80 z-[100] flex justify-center items-center p-4 backdrop-blur-md"><div className="bg-white w-full max-w-md p-0 rounded-3xl shadow-2xl overflow-hidden"><div className="bg-gray-900 p-6 text-white text-center"><h2 className="text-xl font-bold">Rekapitulasi Kasir</h2><p className="text-sm opacity-80">{new Date().toLocaleDateString()}</p></div><div className="p-6 space-y-4"><div className="flex justify-between text-sm"><span>Modal Awal</span><span className="font-bold">Rp {activeShift.start_cash.toLocaleString()}</span></div><div className="flex justify-between text-sm"><span>Penjualan Tunai</span><span className="font-bold text-emerald-600">+ Rp {shiftSummary.cashSales.toLocaleString()}</span></div><div className="flex justify-between text-sm"><span>Non-Tunai (QRIS/Trf)</span><span className="font-bold text-blue-600">Rp {shiftSummary.nonCashSales.toLocaleString()}</span></div><hr/><div className="flex justify-between text-lg font-bold bg-gray-50 p-3 rounded-xl border border-gray-200"><span>Target Uang Fisik</span><span>Rp {shiftSummary.expected.toLocaleString()}</span></div><div className="pt-2"><label className="text-xs font-bold text-gray-500 block mb-2 text-center">Hitung & Masukkan Uang Fisik Aktual</label><input type="number" required autoFocus value={endCashInput} onChange={e=>setEndCashInput(e.target.value)} className="w-full p-4 bg-yellow-50 border-2 border-yellow-200 rounded-2xl text-2xl font-bold text-center outline-none text-yellow-800" placeholder="0"/></div><div className="flex gap-3 pt-2"><button type="button" onClick={()=>setShowEndShiftModal(false)} className="flex-1 py-3 bg-gray-100 font-bold rounded-xl">Batal</button><button onClick={handleCloseShift} className="flex-[2] py-3 bg-red-600 text-white font-bold rounded-xl shadow-lg">Cetak & Tutup</button></div></div></div></div>)}
       {showSuccessCloseModal && (<div className="fixed inset-0 bg-black/90 z-[110] flex justify-center items-center p-4 backdrop-blur-md"><div className="bg-white w-full max-w-sm p-8 rounded-3xl shadow-2xl text-center animate-in zoom-in duration-300"><div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle size={40} className="text-green-600"/></div><h2 className="text-2xl font-extrabold text-gray-900 mb-2">Shift Berhasil Ditutup!</h2><p className="text-gray-500 mb-8">Data keuangan telah diamankan.</p><div className="space-y-3"><button onClick={printClosedShiftReport} className="w-full py-4 bg-gray-900 hover:bg-black text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 transition"><Printer size={20}/> Cetak Laporan</button><button onClick={() => { setShowSuccessCloseModal(false); handleLogout(); }} className="w-full py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-2xl transition">Keluar (Logout)</button></div></div></div>)}
 
-      {/* HISTORY MODAL (FIXED SCROLL MOBILE) */}
+      {/* HISTORY MODAL (FIXED WITH TABLE SCROLL) */}
       {showHistoryModal && (
           <div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-center p-4 backdrop-blur-sm">
               <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
                   <div className="p-4 border-b bg-gray-50 flex justify-between items-center"><h3 className="font-bold text-gray-800 flex items-center gap-2"><History size={20}/> Riwayat Hari Ini</h3><button onClick={()=>setShowHistoryModal(false)} className="bg-gray-200 p-1.5 rounded-full hover:bg-gray-300"><X size={18}/></button></div>
-                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                      {recentTrx.length === 0 ? <p className="text-center text-gray-400 text-sm">Belum ada transaksi.</p> : recentTrx.map(trx => (
-                          // WRAPPER SCROLL HORIZONTAL
-                          <div key={trx.id} className="overflow-x-auto pb-2 border-b border-gray-100 last:border-0 mb-2">
-                              <div className="flex justify-between items-center min-w-[500px] p-2 hover:bg-gray-50 rounded-xl transition">
-                                  <div>
-                                      <p className="font-bold text-sm text-gray-800">Rp {trx.final_amount.toLocaleString()}</p>
-                                      <p className="text-[10px] text-gray-500">{new Date(trx.created_at).toLocaleTimeString()} • {trx.payment_method}</p>
-                                      <p className="text-[10px] text-gray-400 truncate max-w-[200px]">{trx.items_summary}</p>
-                                  </div>
-                                  <div className="flex gap-2 pl-4">
-                                      <button onClick={()=>handleReprint(trx)} className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 flex-shrink-0" title="Print Ulang"><Printer size={16}/></button>
-                                      <button onClick={()=>initVoid(trx.id)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 flex-shrink-0" title="Void / Batalkan"><Trash2 size={16}/></button>
-                                  </div>
-                              </div>
+                  <div className="flex-1 overflow-y-auto p-4">
+                      {recentTrx.length === 0 ? <p className="text-center text-gray-400 text-sm">Belum ada transaksi.</p> : (
+                          <div className="overflow-x-auto pb-4">
+                              <table className="w-full min-w-[500px]">
+                                  <tbody className="space-y-3">
+                                      {recentTrx.map(trx => (
+                                          <tr key={trx.id} className="border-b border-gray-100 last:border-0">
+                                              <td className="py-3 pr-4">
+                                                  <p className="font-bold text-sm text-gray-800">Rp {trx.final_amount.toLocaleString()}</p>
+                                                  <p className="text-[10px] text-gray-500">{new Date(trx.created_at).toLocaleTimeString()} • {trx.payment_method}</p>
+                                              </td>
+                                              <td className="py-3 px-4 max-w-[150px]">
+                                                  <p className="text-[10px] text-gray-400 truncate">{trx.items_summary}</p>
+                                              </td>
+                                              <td className="py-3 pl-4 text-right">
+                                                  <div className="flex gap-2 justify-end">
+                                                      <button onClick={()=>handleReprint(trx)} className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200" title="Print"><Printer size={16}/></button>
+                                                      <button onClick={()=>initVoid(trx.id)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200" title="Void"><Trash2 size={16}/></button>
+                                                  </div>
+                                              </td>
+                                          </tr>
+                                      ))}
+                                  </tbody>
+                              </table>
                           </div>
-                      ))}
+                      )}
                   </div>
               </div>
           </div>
       )}
       
-      {showCustomerModal && (<div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-center p-4 backdrop-blur-sm"><div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"><div className="p-5 border-b bg-gray-50 flex justify-between items-center"><div><h3 className="font-bold text-lg flex items-center gap-2 text-gray-800"><Users className="text-emerald-600"/> Pilih Pelanggan</h3><p className="text-xs text-gray-500">Wajib pilih untuk mencatat Poin / Hutang</p></div><button onClick={()=>setShowCustomerModal(false)} className="bg-gray-200 p-1.5 rounded-full hover:bg-gray-300"><X size={18}/></button></div><div className="p-5 overflow-y-auto"><div className="mb-6"><label className="text-xs font-bold text-gray-500 mb-2 block">Cari Pelanggan Lama</label><div className="relative"><Search className="absolute left-3 top-3 text-gray-400" size={16}/><input type="text" placeholder="Ketik nama / no WA..." value={customerSearch} onChange={e => {setCustomerSearch(e.target.value); setSelectedCustomer(null);}} className="w-full pl-9 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"/></div>{customerSearch && (<div className="mt-2 border border-gray-100 rounded-xl max-h-40 overflow-y-auto shadow-sm">{customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone.includes(customerSearch)).map(c => (<div key={c.id} onClick={()=>{ setSelectedCustomer(c); setCustomerSearch(c.name); }} className="p-3 hover:bg-emerald-50 cursor-pointer border-b border-gray-50 last:border-0 flex justify-between items-center"><div><p className="font-bold text-sm text-gray-800">{c.name}</p><p className="text-xs text-gray-500">{c.phone}</p></div><div className="text-right"><span className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-500 block mb-1">{c.total_transactions}x Belanja</span><span className="text-[10px] text-blue-600 font-bold flex items-center gap-1 justify-end"><Gift size={8}/> {c.points || 0} Poin</span></div></div>))}</div>)}</div><div className="flex items-center gap-3 mb-6"><div className="h-px bg-gray-200 flex-1"></div><span className="text-xs text-gray-400 font-bold">ATAU INPUT BARU</span><div className="h-px bg-gray-200 flex-1"></div></div><div className={`space-y-3 transition ${selectedCustomer ? 'opacity-50 pointer-events-none grayscale' : ''}`}><div><label className="text-xs font-bold text-gray-500">Nama Pelanggan Baru</label><input type="text" value={newCustomerForm.name} onChange={e=>setNewCustomerForm({...newCustomerForm, name: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium" placeholder="Contoh: Budi Santoso"/></div><div><label className="text-xs font-bold text-gray-500">Nomor WhatsApp</label><input type="number" value={newCustomerForm.phone} onChange={e=>setNewCustomerForm({...newCustomerForm, phone: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium" placeholder="Contoh: 62812345678"/></div></div></div><div className="p-5 border-t bg-gray-50"><button onClick={handleProSubmit} className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg transition flex justify-center items-center gap-2">{isSubmitting ? <Loader2 className="animate-spin"/> : <><Save size={18}/> {selectedCustomer ? 'Pilih & Lanjut' : 'Simpan & Lanjut'}</>}</button></div></div></div>)}
+      {/* OTHER MODALS */}
       {showItemDiscModal && discItem && (<div className="fixed inset-0 bg-black/60 z-[100] flex justify-center items-center p-4 backdrop-blur-sm"><div className="bg-white w-full max-w-xs p-6 rounded-2xl shadow-xl relative"><button onClick={()=>setShowItemDiscModal(false)} className="absolute top-4 right-4 bg-gray-100 p-1 rounded-full"><X size={18}/></button><h3 className="font-bold text-lg mb-1">Diskon Produk</h3><p className="text-sm text-gray-500 mb-4 truncate">{discItem.name}</p><div className="flex gap-2 mb-4 bg-gray-100 p-1 rounded-xl"><button onClick={()=>setDiscType('RP')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition ${discType==='RP'?'bg-white shadow text-gray-900':'text-gray-500'}`}>Rupiah (Rp)</button><button onClick={()=>setDiscType('PERCENT')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition ${discType==='PERCENT'?'bg-white shadow text-gray-900':'text-gray-500'}`}>Persen (%)</button></div><form onSubmit={saveItemDiscount}><div className="mb-4 relative"><input type="number" autoFocus required value={discValueInput} onChange={e=>setDiscValueInput(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-center font-bold text-xl outline-emerald-500" placeholder="0"/><span className="absolute right-4 top-4 text-gray-400 font-bold">{discType === 'RP' ? '' : '%'}</span></div><button className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition">Simpan Diskon</button></form></div></div>)}
+      {showCustomerModal && (<div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-center p-4 backdrop-blur-sm"><div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"><div className="p-5 border-b bg-gray-50 flex justify-between items-center"><div><h3 className="font-bold text-lg flex items-center gap-2 text-gray-800"><Users className="text-emerald-600"/> Pilih Pelanggan</h3><p className="text-xs text-gray-500">Wajib pilih untuk mencatat Poin / Hutang</p></div><button onClick={()=>setShowCustomerModal(false)} className="bg-gray-200 p-1.5 rounded-full hover:bg-gray-300"><X size={18}/></button></div><div className="p-5 overflow-y-auto"><div className="mb-6"><label className="text-xs font-bold text-gray-500 mb-2 block">Cari Pelanggan Lama</label><div className="relative"><Search className="absolute left-3 top-3 text-gray-400" size={16}/><input type="text" placeholder="Ketik nama / no WA..." value={customerSearch} onChange={e => {setCustomerSearch(e.target.value); setSelectedCustomer(null);}} className="w-full pl-9 p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"/></div>{customerSearch && (<div className="mt-2 border border-gray-100 rounded-xl max-h-40 overflow-y-auto shadow-sm">{customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone.includes(customerSearch)).map(c => (<div key={c.id} onClick={()=>{ setSelectedCustomer(c); setCustomerSearch(c.name); }} className="p-3 hover:bg-emerald-50 cursor-pointer border-b border-gray-50 last:border-0 flex justify-between items-center"><div><p className="font-bold text-sm text-gray-800">{c.name}</p><p className="text-xs text-gray-500">{c.phone}</p></div><div className="text-right"><span className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-500 block mb-1">{c.total_transactions}x Belanja</span><span className="text-[10px] text-blue-600 font-bold flex items-center gap-1 justify-end"><Gift size={8}/> {c.points || 0} Poin</span></div></div>))}</div>)}</div><div className="flex items-center gap-3 mb-6"><div className="h-px bg-gray-200 flex-1"></div><span className="text-xs text-gray-400 font-bold">ATAU INPUT BARU</span><div className="h-px bg-gray-200 flex-1"></div></div><div className={`space-y-3 transition ${selectedCustomer ? 'opacity-50 pointer-events-none grayscale' : ''}`}><div><label className="text-xs font-bold text-gray-500">Nama Pelanggan Baru</label><input type="text" value={newCustomerForm.name} onChange={e=>setNewCustomerForm({...newCustomerForm, name: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium" placeholder="Contoh: Budi Santoso"/></div><div><label className="text-xs font-bold text-gray-500">Nomor WhatsApp</label><input type="number" value={newCustomerForm.phone} onChange={e=>setNewCustomerForm({...newCustomerForm, phone: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium" placeholder="Contoh: 62812345678"/></div></div></div><div className="p-5 border-t bg-gray-50"><button onClick={handleProSubmit} className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg transition flex justify-center items-center gap-2">{isSubmitting ? <Loader2 className="animate-spin"/> : <><Save size={18}/> {selectedCustomer ? 'Pilih & Lanjut' : 'Simpan & Lanjut'}</>}</button></div></div></div>)}
     </div>
   );
 }
