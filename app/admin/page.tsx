@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { useRouter as useNav } from 'next/navigation'; // Fix import alias collision if any
 import Logo from '@/components/Logo'; 
 import ExcelJS from 'exceljs'; 
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -32,6 +33,7 @@ export default function AdminPage() {
   const [wmsSubTab, setWmsSubTab] = useState("overview"); 
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [expandedTrxId, setExpandedTrxId] = useState<number | null>(null); // --- TAMBAHAN BARU UNTUK HP ---
+  const [chartData, setChartData] = useState<any[]>([]);
 
   // --- DATA STATE ---
   const currentYear = new Date().getFullYear();
@@ -126,7 +128,7 @@ export default function AdminPage() {
     checkUser();
   }, [router]);
 
-  // --- 2. FETCH DATA ---
+  /// --- 2. FETCH DATA (SECURITY PATCHED) ---
   const fetchAllData = async () => {
     if (!user) return;
     let startDate, endDate;
@@ -138,62 +140,94 @@ export default function AdminPage() {
     }
     const startIso = `${startDate}T00:00:00`; const endIso = `${endDate}T23:59:59`;
 
-    const { data: catData } = await supabase.from('categories').select('*').order('name', { ascending: true });
-    if (catData && catData.length > 0) { setCategories(catData); if (productForm.category === '') setProductForm(prev => ({ ...prev, category: catData[0].name })); } 
-    else { setCategories([{id:-1, name:'Umum'}]); if (productForm.category === '') setProductForm(prev => ({ ...prev, category: 'Umum' })); }
+    // 1. Categories - Filter by user.id
+    const { data: catData } = await supabase.from('categories').select('*').eq('user_id', user.id).order('name');
+    if (catData) setCategories(catData.length ? catData : [{id:-1, name:'Umum'}]);
 
-    const { data: locData } = await supabase.from('locations').select('*').order('name', { ascending: true });
-    if (locData && locData.length > 0) { 
-        setLocations(locData); 
-        if (productForm.location === '') setProductForm(prev => ({ ...prev, location: locData[0].name })); 
-    } else {
-        setLocations([]); 
-    }
+    // 2. Locations - Filter by user.id
+    const { data: locData } = await supabase.from('locations').select('*').eq('user_id', user.id).order('name');
+    if (locData) setLocations(locData);
 
-    const { data: prodData } = await supabase.from('products').select('*').order('name', { ascending: true });
+    // 3. Products - Filter by user.id
+    const { data: prodData } = await supabase.from('products').select('*').eq('user_id', user.id).order('name');
     if (prodData) {
         setProducts(prodData);
-        if(prodData.length > 0 && purchaseForm.product_id === '') setPurchaseForm(prev => ({...prev, product_id: prodData[0].id}));
-        if(prodData.length > 0 && opnameForm.product_id === '') setOpnameForm(prev => ({...prev, product_id: prodData[0].id}));
+        if(prodData.length > 0) {
+            if(purchaseForm.product_id === '') setPurchaseForm(prev => ({...prev, product_id: prodData[0].id}));
+            if(opnameForm.product_id === '') setOpnameForm(prev => ({...prev, product_id: prodData[0].id}));
+        }
     }
 
-    const { data: trxData } = await supabase.from('transactions').select('*').gte('created_at', startIso).lte('created_at', endIso).order('created_at', { ascending: false });
+    // 4. Transactions - Filter by user.id
+    const { data: trxData } = await supabase.from('transactions').select('*').eq('user_id', user.id).gte('created_at', startIso).lte('created_at', endIso).order('created_at', { ascending: false });
     if (trxData) setTransactions(trxData);
         
-    const { data: expData } = await supabase.from('expenses').select('*').gte('created_at', startIso).lte('created_at', endIso).order('created_at', { ascending: false });
+    // 5. Expenses - SECURITY FIX DISINI (Filter User ID)
+    const { data: expData } = await supabase.from('expenses').select('*').eq('user_id', user.id).gte('created_at', startIso).lte('created_at', endIso).order('created_at', { ascending: false });
     if (expData) setExpenses(expData);
 
-    const { data: suppData } = await supabase.from('suppliers').select('*').order('name');
+    // 6. Suppliers - Filter by user.id
+    const { data: suppData } = await supabase.from('suppliers').select('*').eq('user_id', user.id).order('name');
     if (suppData) {
         setSuppliers(suppData);
         if(suppData.length > 0 && purchaseForm.supplier_id === '') setPurchaseForm(prev => ({...prev, supplier_id: suppData[0].id}));
     }
     
-    const { data: purchData } = await supabase.from('purchases').select('*, suppliers(name)').gte('created_at', startIso).lte('created_at', endIso).order('created_at', { ascending: false });
+    // 7. Purchases - Filter by user.id
+    const { data: purchData } = await supabase.from('purchases').select('*, suppliers(name)').eq('user_id', user.id).gte('created_at', startIso).lte('created_at', endIso).order('created_at', { ascending: false });
     if (purchData) setPurchases(purchData);
 
-    const { data: logsData } = await supabase.from('stock_logs').select('*, products(name)').gte('created_at', startIso).lte('created_at', endIso).order('created_at', { ascending: false });
+    // 8. Stock Logs - Filter by user.id logic (via product list)
+    const { data: logsData } = await supabase.from('stock_logs')
+        .select('*, products(name)')
+        .in('product_id', prodData ? prodData.map(p => p.id) : []) 
+        .gte('created_at', startIso).lte('created_at', endIso).order('created_at', { ascending: false });
     if (logsData) setAllStockLogs(logsData);
     
-    const { data: custData } = await supabase.from('customers').select('*, transactions(total_amount, created_at)').order('total_transactions', { ascending: false });
+    // 9. Customers - Filter by user.id
+    const { data: custData } = await supabase.from('customers').select('*, transactions(total_amount, created_at)').eq('user_id', user.id).order('total_transactions', { ascending: false });
     if (custData) {
-        const enrichedCustomers = custData.map((c: any) => {
-            const totalSpent = c.transactions?.reduce((sum: number, t: any) => sum + (t.total_amount || 0), 0) || 0;
-            const lastTrx = c.transactions?.length > 0 ? new Date(Math.max(...c.transactions.map((t: any) => new Date(t.created_at).getTime()))) : null;
+        const enriched = custData.map((c: any) => {
+            const total = c.transactions?.reduce((sum: number, t: any) => sum + (t.total_amount || 0), 0) || 0;
+            const last = c.transactions?.length ? new Date(Math.max(...c.transactions.map((t: any) => new Date(t.created_at).getTime()))) : null;
             let level = 'Bronze';
-            if (totalSpent > 5000000) level = 'Gold'; else if (totalSpent > 1000000) level = 'Silver';
-            return { ...c, totalSpent, lastTrx, level };
+            if (total > 5000000) level = 'Gold'; else if (total > 1000000) level = 'Silver';
+            return { ...c, totalSpent: total, lastTrx: last, level };
         });
-        setCustomersList(enrichedCustomers);
+        setCustomersList(enriched);
     }
 
-    const totalIncome = trxData?.reduce((a,c)=>a+c.total_amount,0)||0;
+    // CALCULATIONS
+    const now = new Date();
+    const localToday = now.toLocaleDateString('en-CA');
+
+    const totalIncome = trxData?.filter((t:any) => {
+        if (selectedMonth === 0) return true; 
+        return t.status !== 'CANCELLED';
+    }).reduce((a:number,c:any)=>a+c.total_amount,0)||0;
+
+    const todayIncome = trxData?.filter((t:any) => {
+        const tDate = new Date(t.created_at).toLocaleDateString('en-CA');
+        return tDate === localToday && t.status !== 'CANCELLED';
+    }).reduce((a:number,c:any)=>a+c.total_amount,0)||0;
+
     const totalExpense = expData?.reduce((a,c)=>a+c.amount,0)||0;
     const totalPurchase = purchData?.reduce((a,c)=>a+c.total_cost,0)||0;
     const stockVal = prodData?.reduce((a,c)=> a + ((c.buy_price || 0) * c.stock), 0) || 0;
     const lowStock = prodData?.filter((p:any) => p.stock <= (p.min_stock || 10)).length || 0; 
 
-    setSummary({ income: totalIncome, expense: totalExpense + totalPurchase, profit: totalIncome - (totalExpense + totalPurchase), stockValue: stockVal, lowStockCount: lowStock });
+    setSummary({ income: selectedMonth === 0 ? totalIncome : todayIncome, expense: totalExpense + totalPurchase, profit: (selectedMonth === 0 ? totalIncome : todayIncome) - (totalExpense + totalPurchase), stockValue: stockVal, lowStockCount: lowStock });
+
+    // CHART
+    const last7Days = [...Array(7)].map((_, i) => { const d = new Date(); d.setDate(d.getDate() - i); return d.toLocaleDateString('en-CA'); }).reverse();
+    const chart = last7Days.map(dateStr => {
+        const dailyTotal = trxData?.filter((t: any) => {
+            const tDate = new Date(t.created_at).toLocaleDateString('en-CA');
+            return tDate === dateStr && t.status !== 'CANCELLED';
+        }).reduce((acc: number, curr: any) => acc + curr.total_amount, 0) || 0;
+        return { name: new Date(dateStr).toLocaleDateString('id-ID', {day: '2-digit', month: 'short'}), total: dailyTotal };
+    });
+    setChartData(chart);
   };
 
   useEffect(() => { fetchAllData(); }, [user, selectedYear, selectedMonth]);
@@ -358,7 +392,26 @@ export default function AdminPage() {
       } catch (err: any) { alert("Gagal: " + err.message); } finally { setLoading(false); } 
   };
 
-  const handleExpenseSubmit = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); const { error } = await supabase.from('expenses').insert([{ title: expenseForm.title, amount: Number(expenseForm.amount), category: expenseForm.category }]); if(!error){alert("Dicatat!"); setExpenseForm({title:'',amount:'',category:'Operasional'}); fetchAllData();} setLoading(false); };
+  const handleExpenseSubmit = async (e: React.FormEvent) => { 
+      e.preventDefault(); 
+      setLoading(true); 
+      // FIX: Menambahkan user_id: user.id agar data terikat ke akun ini saja
+      const { error } = await supabase.from('expenses').insert([{ 
+          title: expenseForm.title, 
+          amount: Number(expenseForm.amount), 
+          category: expenseForm.category,
+          user_id: user.id 
+      }]); 
+      
+      if(!error){
+          alert("Dicatat!"); 
+          setExpenseForm({title:'', amount:'', category:'Operasional'}); 
+          fetchAllData();
+      } else {
+          alert("Gagal menyimpan: " + error.message);
+      }
+      setLoading(false); 
+  };
   const handleDeleteExpense = async (id: number) => { if (confirm("Hapus?")) { await supabase.from('expenses').delete().eq('id', id); fetchAllData(); } };
   const handleDownloadExcel = async () => { if (!isPro) return handleUpgradeRequest('new'); const workbook = new ExcelJS.Workbook(); const wsTrx = workbook.addWorksheet('Penjualan'); wsTrx.columns = [{ header: 'Tanggal', key: 'd' }, { header: 'Detail', key: 'k' }, { header: 'Pelanggan', key: 'p' }, { header: 'Metode', key: 'm' }, { header: 'Total', key: 't' }, { header: 'Pajak', key: 'tax' }]; transactions.forEach(t => wsTrx.addRow({ d: new Date(t.created_at).toLocaleDateString(), k: t.items_summary, p: t.customer_name || '-', m: t.payment_method || 'CASH', t: t.total_amount, tax: t.tax || 0 })); const wsExp = workbook.addWorksheet('Pengeluaran'); wsExp.columns = [{ header: 'Tanggal', key: 'd' }, { header: 'Keperluan', key: 'k' }, { header: 'Kategori', key: 'c' }, { header: 'Jumlah', key: 'a' }]; expenses.forEach(e => wsExp.addRow({ d: new Date(e.created_at).toLocaleDateString(), k: e.title, c: e.category, a: e.amount })); const wsPur = workbook.addWorksheet('Pembelian'); wsPur.columns = [{ header: 'Tanggal', key: 'd' }, { header: 'Supplier', key: 's' }, { header: 'Total Biaya', key: 't' }]; purchases.forEach(p => wsPur.addRow({ d: new Date(p.created_at).toLocaleDateString(), s: p.suppliers?.name, t: p.total_cost })); const wsSup = workbook.addWorksheet('Data Supplier'); wsSup.columns = [{ header: 'Nama', key: 'n' }, { header: 'Telepon', key: 'p' }, { header: 'Alamat', key: 'a' }]; suppliers.forEach(s => wsSup.addRow({ n: s.name, p: s.phone, a: s.address })); const wsLog = workbook.addWorksheet('Laporan Arus Stok'); wsLog.columns = [{ header: 'Waktu', key: 'd' }, { header: 'Produk', key: 'p' }, { header: 'Tipe', key: 't' }, { header: 'Movement', key: 'mv' }, { header: 'Jumlah', key: 'q' }, { header: 'Keterangan', key: 'n' }]; allStockLogs.forEach(l => { wsLog.addRow({ d: new Date(l.created_at).toLocaleDateString(), p: l.products?.name, t: l.type, mv: l.movement_type || '-', q: l.qty, n: l.note }); }); const buffer = await workbook.xlsx.writeBuffer(); const url = window.URL.createObjectURL(new Blob([buffer])); const a = document.createElement('a'); a.href = url; a.download = `Laporan_Lengkap.xlsx`; a.click(); };
   
