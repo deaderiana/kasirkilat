@@ -2,20 +2,22 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
 import { 
   LayoutDashboard, Package, ShoppingCart, Wallet, PieChart, Menu, X, 
   TrendingUp, TrendingDown, DollarSign, Save, Trash2, Edit2, Upload, 
   Loader2, Lock, Printer, Download, LogOut, History, FileText, Crown, Store, AlertTriangle, Clock, Settings, Plus,
   Users, ShoppingBag, ClipboardList, CheckCircle, Shield, Key, Zap, Tag, CreditCard, UserCog, Gift, FileText as FileIcon, 
-  Warehouse, MapPin, AlertCircle, ArrowDownLeft, ArrowUpRight, Search, Star, MessageCircle, Landmark
+  Warehouse, MapPin, AlertCircle, ArrowDownLeft, ArrowUpRight, Search, Star, MessageCircle, Landmark,BarChart3, ChevronDown
 } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter as useNav } from 'next/navigation'; // Fix import alias collision if any
 import Logo from '@/components/Logo'; 
 import ExcelJS from 'exceljs'; 
 
 export default function AdminPage() {
   const router = useRouter();
+ 
   
   // --- AUTH & USER STATE ---
   const [user, setUser] = useState<any>(null); 
@@ -29,6 +31,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState("dashboard"); 
   const [wmsSubTab, setWmsSubTab] = useState("overview"); 
   const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [expandedTrxId, setExpandedTrxId] = useState<number | null>(null); // --- TAMBAHAN BARU UNTUK HP ---
 
   // --- DATA STATE ---
   const currentYear = new Date().getFullYear();
@@ -156,7 +159,7 @@ export default function AdminPage() {
 
     const { data: trxData } = await supabase.from('transactions').select('*').gte('created_at', startIso).lte('created_at', endIso).order('created_at', { ascending: false });
     if (trxData) setTransactions(trxData);
-    
+        
     const { data: expData } = await supabase.from('expenses').select('*').gte('created_at', startIso).lte('created_at', endIso).order('created_at', { ascending: false });
     if (expData) setExpenses(expData);
 
@@ -194,6 +197,9 @@ export default function AdminPage() {
   };
 
   useEffect(() => { fetchAllData(); }, [user, selectedYear, selectedMonth]);
+
+  // --- ACTIONS HELPER ---
+  const toggleExpand = (id: number) => { setExpandedTrxId(expandedTrxId === id ? null : id); }; // --- HELPER BARU ---
 
   const handleUpgradeRequest = (type: 'new' | 'renew' = 'new') => {
     const ownerPhone = "6282177771224"; 
@@ -518,7 +524,6 @@ export default function AdminPage() {
         {/* CONTENT */}
         <div className="flex-1 overflow-y-auto p-4 lg:p-8">
             
-            {/* ... TABS DASHBOARD, CUSTOMER, WMS, PRODUCTS, DLL (SAMA SEPERTI SEBELUMNYA) ... */}
             {activeTab === 'dashboard' && (<div className="space-y-6"><div className="grid grid-cols-1 md:grid-cols-4 gap-6"><div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"><div className="flex justify-between items-start mb-4"><div className="p-3 bg-emerald-100 rounded-xl text-emerald-600"><TrendingUp size={24}/></div><span className="text-xs font-bold text-gray-400 uppercase">Pemasukan</span></div><h3 className="text-2xl font-extrabold text-gray-900">Rp {summary.income.toLocaleString('id-ID')}</h3></div><div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"><div className="flex justify-between items-start mb-4"><div className="p-3 bg-red-100 rounded-xl text-red-600"><TrendingDown size={24}/></div><span className="text-xs font-bold text-gray-400 uppercase">Pengeluaran</span></div><h3 className="text-2xl font-extrabold text-gray-900">Rp {summary.expense.toLocaleString('id-ID')}</h3></div><div className="bg-gradient-to-br from-blue-600 to-indigo-600 p-6 rounded-2xl shadow-lg shadow-blue-500/20 text-white"><div className="flex justify-between items-start mb-4"><div className="p-3 bg-white/20 rounded-xl backdrop-blur"><DollarSign size={24}/></div><span className="text-xs font-bold text-blue-100 uppercase">Cashflow</span></div><h3 className="text-2xl font-extrabold">Rp {summary.profit.toLocaleString('id-ID')}</h3></div><div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"><div className="flex justify-between items-start mb-4"><div className="p-3 bg-orange-100 rounded-xl text-orange-600"><Package size={24}/></div><span className="text-xs font-bold text-gray-400 uppercase">Nilai Aset Stok</span></div><h3 className="text-2xl font-extrabold text-gray-900">Rp {summary.stockValue.toLocaleString('id-ID')}</h3></div></div></div>)}
             {activeTab === 'customers' && (
                 <div className="space-y-6">
@@ -530,6 +535,36 @@ export default function AdminPage() {
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden"><div className="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center"><h3 className="font-bold text-gray-700 flex items-center gap-2"><UserCog size={18}/> Database & Analisa Pelanggan</h3></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-white border-b border-gray-100"><tr><th className="p-4">Pelanggan</th><th className="p-4">Level</th><th className="p-4">Total Belanja</th><th className="p-4">Terakhir Datang</th><th className="p-4">Poin Aktif</th><th className="p-4 text-center">Aksi Cepat</th></tr></thead><tbody className="divide-y divide-gray-50">{customersList.map((c: any) => { const isLost = c.lastTrx && (new Date().getTime() - c.lastTrx) > (30 * 24 * 60 * 60 * 1000); return ( <tr key={c.id} className={isLost ? 'bg-red-50/50' : ''}><td className="p-4"><div className="font-bold text-gray-800">{c.name}</div><div className="text-xs text-gray-500">{c.phone}</div></td><td className="p-4"><span className={`px-2 py-1 rounded text-[10px] font-extrabold uppercase border ${c.level === 'Gold' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' : c.level === 'Silver' ? 'bg-gray-100 text-gray-700 border-gray-300' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>{c.level}</span></td><td className="p-4 font-medium">Rp {c.totalSpent.toLocaleString()}</td><td className="p-4"><div className="text-xs text-gray-600">{c.lastTrx ? new Date(c.lastTrx).toLocaleDateString() : 'Belum Pernah'}</div>{isLost && <div className="text-[10px] text-red-500 font-bold flex items-center gap-1"><AlertCircle size={10}/> Jarang Belanja</div>}</td><td className="p-4 text-blue-600 font-bold">{c.points.toLocaleString()}</td><td className="p-4 text-center flex justify-center gap-2"><button onClick={()=>openCustomerEdit(c)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600" title="Edit Data"><Edit2 size={16}/></button><button onClick={() => window.open(`https://wa.me/${c.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Halo Kak ${c.name}! Kami ada promo spesial untuk pelanggan setia nih. Mampir yuk ke Kasir KilatQu! 🎁`)}`, '_blank')} className="p-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg" title="Kirim WA Promo"><MessageCircle size={16}/></button></td></tr> )})}</tbody></table></div></div>
                 </div>
             )}
+            {/* === INI KODE YANG HILANG (FITUR KEUANGAN) === */}
+            {activeTab === 'finance' && (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* KIRI: Form Input */}
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                            <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><TrendingDown size={20} className="text-red-500"/> Catat Pengeluaran</h3>
+                            <form onSubmit={handleExpenseSubmit} className="space-y-4">
+                                <div><label className="text-xs font-bold text-gray-500">Judul Pengeluaran</label><input type="text" value={expenseForm.title} onChange={e=>setExpenseForm({...expenseForm, title: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border" placeholder="Contoh: Bayar Listrik" required/></div>
+                                <div><label className="text-xs font-bold text-gray-500">Jumlah (Rp)</label><input type="number" value={expenseForm.amount} onChange={e=>setExpenseForm({...expenseForm, amount: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border" placeholder="0" required/></div>
+                                <div><label className="text-xs font-bold text-gray-500">Kategori</label><select value={expenseForm.category} onChange={e=>setExpenseForm({...expenseForm, category: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border"><option>Operasional</option><option>Gaji Karyawan</option><option>Sewa Tempat</option><option>Lainnya</option></select></div>
+                                <button disabled={loading} className="w-full py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700">{loading ? <Loader2 className="animate-spin mx-auto"/> : 'Simpan Pengeluaran'}</button>
+                            </form>
+                        </div>
+                        {/* KANAN: Riwayat */}
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                            <h3 className="font-bold text-lg mb-4">Riwayat Pengeluaran</h3>
+                            <div className="max-h-80 overflow-y-auto space-y-2">
+                                {expenses.length === 0 ? <p className="text-center text-gray-400 text-xs">Belum ada data.</p> : expenses.map(exp => (
+                                    <div key={exp.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
+                                        <div><p className="font-bold text-gray-800">{exp.title}</p><p className="text-xs text-gray-500">{new Date(exp.created_at).toLocaleDateString()} • {exp.category}</p></div>
+                                        <div className="flex items-center gap-3"><span className="font-bold text-red-600">- Rp {exp.amount.toLocaleString()}</span><button onClick={()=>handleDeleteExpense(exp.id)} className="text-gray-400 hover:text-red-500"><Trash2 size={16}/></button></div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* ================================================= */}
             {activeTab === 'wms' && (
                 <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -582,7 +617,79 @@ export default function AdminPage() {
                 <div><label className="text-xs font-bold text-gray-500 mb-1 block">Min. Stok</label><div className="relative"><AlertCircle size={14} className="absolute left-3 top-3.5 text-red-400"/><input type="number" value={productForm.min_stock} onChange={e=>setProductForm({...productForm, min_stock: e.target.value})} className="w-full pl-9 p-3 bg-gray-50 rounded-xl border border-gray-200 font-medium text-sm" placeholder="10"/></div></div>
             </div>
             <div><label className="text-xs font-bold text-gray-500">Stok Awal</label><input type="number" value={productForm.stock} onChange={e=>setProductForm({...productForm, stock: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 font-medium text-sm"/></div><div><label className="text-xs font-bold text-gray-500 flex justify-between">Kategori <button type="button" onClick={()=>setShowCategoryModal(true)} className="text-emerald-600 text-[10px] flex items-center gap-1 hover:underline"><Settings size={10}/> Kelola</button></label><select value={productForm.category} onChange={e=>setProductForm({...productForm, category: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 font-medium text-sm">{categories.map(cat => (<option key={cat.id} value={cat.name}>{cat.name}</option>))}</select></div><div><label className="text-xs font-bold text-gray-500 flex justify-between">Foto Produk <span>{isPro ? 'PRO' : <Lock size={12}/>}</span></label>{isPro ? (productForm.image ? <div className="mt-2 relative h-32 w-full rounded-xl overflow-hidden"><img src={productForm.image} className="w-full h-full object-cover"/><button type="button" onClick={()=>setProductForm({...productForm, image: ''})} className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full"><X size={14}/></button></div> : <label className={`mt-2 flex flex-col items-center justify-center h-32 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:bg-gray-50 ${uploading && 'opacity-50'}`}>{uploading ? <Loader2 className="animate-spin"/> : <Upload className="text-gray-400"/>}<input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} disabled={uploading}/></label>) : (<div onClick={()=>handleUpgradeRequest('new')} className="mt-2 h-20 bg-gray-100 rounded-xl flex items-center justify-center text-xs text-gray-400 cursor-pointer border border-gray-200 hover:bg-gray-200 transition">Klik untuk UPGRADE PRO 🔒</div>)}</div><div className="flex gap-2">{editingProduct && <button type="button" onClick={()=>{setEditingProduct(null); setProductForm({name:'',price:'',buy_price:'',stock:'',category:categories[0]?.name||'',image:'',location:locations.length>0?locations[0].name:'',min_stock:'10'})}} className="w-1/3 bg-gray-100 font-bold rounded-xl text-xs">Batal</button>}<button disabled={loading} className={`flex-1 py-3 ${editingProduct?'bg-orange-500':'bg-gray-900'} text-white font-bold rounded-xl flex justify-center`}>{loading ? <Loader2 className="animate-spin"/> : editingProduct ? 'Update' : 'Simpan'}</button></div></form></div><div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 h-fit">{products.map(p => (<div key={p.id} className={`bg-white p-3 rounded-xl shadow-sm border flex gap-3 group hover:border-emerald-300 transition relative ${p.stock <= (p.min_stock || 10) ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}><div className="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0"><img src={p.image || "https://via.placeholder.com/150"} className="w-full h-full object-cover"/></div><div className="flex-1 min-w-0"><h4 className="font-bold text-sm text-gray-800 truncate">{p.name}</h4><p className="text-xs text-emerald-600 font-bold">Jual: Rp {p.price.toLocaleString()}</p><p className="text-[10px] text-gray-400">Modal: Rp {(p.buy_price || 0).toLocaleString()}</p><div className="flex justify-between mt-1"><p className={`text-xs font-bold ${p.stock <= (p.min_stock || 10) ? 'text-red-600' : 'text-gray-500'}`}>Stok: {p.stock}</p><span className="text-[10px] bg-gray-100 px-1 rounded flex items-center gap-1"><MapPin size={8}/> {p.location || '-'}</span></div></div><div className="flex flex-col gap-2 justify-center opacity-0 group-hover:opacity-100 transition absolute right-3 top-3 bottom-3 bg-white/90 pl-2"><button onClick={()=>openHistory(p)} className="text-blue-500 hover:text-blue-700 flex items-center gap-1 text-[10px] font-bold border border-blue-200 px-2 py-1 rounded-md"><History size={14}/> Riwayat</button><div className="flex gap-2 justify-end"><button onClick={()=>handleEditProduct(p)} className="text-orange-400 hover:text-orange-600"><Edit2 size={16}/></button><button onClick={()=>handleDeleteProduct(p.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></div></div></div>))}</div></div>)}
-            {activeTab === 'transactions' && (<div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden"><div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50"><h3 className="font-bold text-gray-700">Riwayat Penjualan</h3><button onClick={() => isPro ? handleDownloadExcel() : handleUpgradeRequest('new')} className={`text-xs font-bold ${isPro ? 'text-emerald-600 hover:underline' : 'text-gray-400 cursor-pointer flex items-center gap-1'}`}>{!isPro && <Lock size={12}/>} Download Laporan Excel</button></div><table className="w-full text-left text-sm"><thead className="bg-white border-b border-gray-100"><tr><th className="p-4">Tanggal</th><th className="p-4">Detail</th><th className="p-4">Metode</th><th className="p-4 text-right">Total</th><th className="p-4 text-center">Aksi</th></tr></thead><tbody className="divide-y divide-gray-50">{transactions.map(t=>(<tr key={t.id}><td className="p-4 text-gray-500">{new Date(t.created_at).toLocaleDateString()} <span className="text-xs block">{new Date(t.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span></td><td className="p-4 text-gray-800 font-medium max-w-xs truncate">{t.items_summary} {t.customer_name && <span className="block text-xs text-emerald-600 mt-1">Pelanggan: {t.customer_name}</span>}</td><td className="p-4"><span className={`text-[10px] font-bold px-2 py-1 rounded ${t.payment_method==='CASH'?'bg-emerald-100 text-emerald-700':t.payment_method==='QRIS'?'bg-purple-100 text-purple-700':'bg-blue-100 text-blue-700'}`}>{t.payment_method || 'CASH'}</span></td><td className="p-4 text-right font-bold text-emerald-600">Rp {t.total_amount.toLocaleString()}</td><td className="p-4 text-center flex justify-center gap-2"><button onClick={() => { setInvoiceData(t); handlePrintStruk('thermal'); }} className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-blue-100 hover:text-blue-600 transition" title="Cetak Struk Thermal"><Printer size={16}/></button><button onClick={() => { setInvoiceData(t); handlePrintStruk('invoice'); }} className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-emerald-100 hover:text-emerald-600 transition" title="Cetak Invoice A4"><FileIcon size={16}/></button><button onClick={() => handleDeleteTransaction(t.id)} className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-red-100 hover:text-red-600 transition" title="Hapus"><Trash2 size={16}/></button></td></tr>))}</tbody></table></div>)}
+            
+            {/* === [FIXED SECTION] TRANSACTIONS TAB DENGAN ACCORDION MOBILE === */}
+            {activeTab === 'transactions' && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                        <h3 className="font-bold text-gray-700">Riwayat Penjualan</h3>
+                        <button onClick={() => isPro ? handleDownloadExcel() : handleUpgradeRequest('new')} className={`text-xs font-bold ${isPro ? 'text-emerald-600 hover:underline' : 'text-gray-400 cursor-pointer flex items-center gap-1'}`}>{!isPro && <Lock size={12}/>} Download Laporan Excel</button>
+                    </div>
+                    
+                    {/* 1. TAMPILAN LAPTOP (TABLE) - Hidden on Mobile */}
+                    <div className="hidden md:block overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-white border-b border-gray-100">
+                                <tr>
+                                    <th className="p-4">Tanggal</th>
+                                    <th className="p-4">Detail</th>
+                                    <th className="p-4">Metode</th>
+                                    <th className="p-4 text-right">Total</th>
+                                    <th className="p-4 text-center">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {transactions.map(t=>(
+                                    <tr key={t.id}>
+                                        <td className="p-4 text-gray-500">{new Date(t.created_at).toLocaleDateString()} <span className="text-xs block">{new Date(t.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span></td>
+                                        <td className="p-4 text-gray-800 font-medium max-w-xs truncate">{t.items_summary} {t.customer_name && <span className="block text-xs text-emerald-600 mt-1">Pelanggan: {t.customer_name}</span>}</td>
+                                        <td className="p-4"><span className={`text-[10px] font-bold px-2 py-1 rounded ${t.payment_method==='CASH'?'bg-emerald-100 text-emerald-700':t.payment_method==='QRIS'?'bg-purple-100 text-purple-700':'bg-blue-100 text-blue-700'}`}>{t.payment_method || 'CASH'}</span></td>
+                                        <td className="p-4 text-right font-bold text-emerald-600">Rp {t.total_amount.toLocaleString()}</td>
+                                        <td className="p-4 text-center flex justify-center gap-2">
+                                            <button onClick={() => { setInvoiceData(t); handlePrintStruk('thermal'); }} className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-blue-100 hover:text-blue-600 transition" title="Cetak Struk Thermal"><Printer size={16}/></button>
+                                            <button onClick={() => { setInvoiceData(t); handlePrintStruk('invoice'); }} className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-emerald-100 hover:text-emerald-600 transition" title="Cetak Invoice A4"><FileIcon size={16}/></button>
+                                            <button onClick={() => handleDeleteTransaction(t.id)} className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-red-100 hover:text-red-600 transition" title="Hapus"><Trash2 size={16}/></button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* 2. TAMPILAN MOBILE (ACCORDION) - Only visible on Mobile */}
+                    <div className="md:hidden divide-y divide-gray-100">
+                        {transactions.map(t => (
+                            <div key={t.id} className="bg-white">
+                                <div onClick={() => toggleExpand(t.id)} className="p-4 flex justify-between items-center active:bg-gray-50 cursor-pointer">
+                                    <div className="flex gap-3 items-center">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${t.payment_method==='HUTANG'?'bg-red-100 text-red-600':'bg-emerald-100 text-emerald-600'}`}>
+                                            {t.payment_method==='HUTANG'?<AlertTriangle size={14}/>:<CheckCircle size={14}/>}
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-gray-900">Rp {t.total_amount.toLocaleString()}</p>
+                                            <p className="text-xs text-gray-500">{new Date(t.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} • {t.customer_name||'Umum'}</p>
+                                        </div>
+                                    </div>
+                                    <ChevronDown size={20} className={`text-gray-400 transition ${expandedTrxId===t.id?'rotate-180':''}`}/>
+                                </div>
+                                {expandedTrxId === t.id && (
+                                    <div className="px-4 pb-4 bg-gray-50 text-sm border-t border-gray-100 pt-3 animate-in slide-in-from-top-1">
+                                        <p className="font-bold text-[10px] text-gray-500 uppercase mb-1">Detail Barang:</p>
+                                        <p className="mb-3 text-gray-700">{t.items_summary}</p>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <button onClick={() => { setInvoiceData(t); handlePrintStruk('thermal'); }} className="py-2 bg-white border border-blue-200 text-blue-600 font-bold rounded-lg flex items-center justify-center gap-2 text-xs"><Printer size={14}/> Struk</button>
+                                            <button onClick={() => { setInvoiceData(t); handlePrintStruk('invoice'); }} className="py-2 bg-white border border-emerald-200 text-emerald-600 font-bold rounded-lg flex items-center justify-center gap-2 text-xs"><FileIcon size={14}/> Invoice</button>
+                                            <button onClick={() => handleDeleteTransaction(t.id)} className="py-2 bg-white border border-red-200 text-red-600 font-bold rounded-lg flex items-center justify-center gap-2 text-xs"><Trash2 size={14}/> Hapus</button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+            {/* === [END FIXED SECTION] === */}
+
             {activeTab === 'reports' && (<div className="flex flex-col items-center justify-center h-96 bg-white rounded-2xl border border-gray-200 text-center p-8"><div className="bg-emerald-100 p-6 rounded-full mb-6"><PieChart size={64} className="text-emerald-600"/></div><h2 className="text-2xl font-bold text-gray-800 mb-2">Laporan Bisnis Lengkap</h2><p className="text-gray-500 mb-8 max-w-md">Download Laporan Penjualan, Pengeluaran, Pembelian Stok, dan Data Supplier dalam format Excel.</p><button onClick={() => isPro ? handleDownloadExcel() : handleUpgradeRequest('new')} className={`px-8 py-4 rounded-xl font-bold text-white flex items-center gap-3 transition shadow-xl ${isPro ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-300 cursor-pointer hover:bg-gray-400'}`}>{isPro ? <Download size={20}/> : <Lock size={20}/>} {isPro ? 'Download Excel' : 'Upgrade PRO'}</button></div>)}
             
             {/* UPDATED SETTINGS TAB WITH BRANDING */}
@@ -644,7 +751,6 @@ export default function AdminPage() {
                 </div>
             )}
 
-            {/* OTHER TABS HIDDEN FOR BREVITY ... */}
             {activeTab === 'suppliers' && (<div className="grid lg:grid-cols-3 gap-8"><div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 h-fit"><h3 className="font-bold text-lg mb-4">Tambah Supplier</h3><form onSubmit={handleAddSupplier} className="space-y-4"><input type="text" value={supplierForm.name} onChange={e=>setSupplierForm({...supplierForm, name: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border" placeholder="Nama Supplier / PT" required/><input type="text" value={supplierForm.phone} onChange={e=>setSupplierForm({...supplierForm, phone: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border" placeholder="Nomor HP / WA" required/><textarea value={supplierForm.address} onChange={e=>setSupplierForm({...supplierForm, address: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border" placeholder="Alamat (Opsional)" rows={3}></textarea><button disabled={loading} className="w-full py-3 bg-gray-900 text-white font-bold rounded-xl">{loading ? <Loader2 className="animate-spin mx-auto"/> : 'Simpan Supplier'}</button></form></div><div className="lg:col-span-2 grid gap-4">{suppliers.map(sup => (<div key={sup.id} className="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center"><div><h4 className="font-bold">{sup.name}</h4><p className="text-sm text-gray-500">{sup.phone}</p><p className="text-xs text-gray-400">{sup.address}</p></div><div className="flex gap-2"><button onClick={() => window.open(`https://wa.me/${sup.phone.replace(/[^0-9]/g, '')}`, '_blank')} className="bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"><Users size={14}/> Chat WA</button><button onClick={()=>handleDeleteSupplier(sup.id)} className="bg-red-100 text-red-600 p-2 rounded-lg"><Trash2 size={16}/></button></div></div>))}</div></div>)}
             {activeTab === 'purchases' && (<div className="grid lg:grid-cols-3 gap-8"><div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 h-fit"><h3 className="font-bold text-lg mb-4">Input Belanja Stok</h3><form onSubmit={handleRestock} className="space-y-4"><div><label className="text-xs font-bold text-gray-500">Supplier</label><select value={purchaseForm.supplier_id} onChange={e=>setPurchaseForm({...purchaseForm, supplier_id: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border">{suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div><div><label className="text-xs font-bold text-gray-500">Produk</label><select value={purchaseForm.product_id} onChange={e=>setPurchaseForm({...purchaseForm, product_id: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border">{products.map(p=><option key={p.id} value={p.id}>{p.name} (Stok: {p.stock})</option>)}</select></div><div className="grid grid-cols-2 gap-3"><div><label className="text-xs font-bold text-gray-500">Jml Beli</label><input type="number" value={purchaseForm.qty} onChange={e=>setPurchaseForm({...purchaseForm, qty: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border" placeholder="0"/></div><div><label className="text-xs font-bold text-gray-500">Harga Beli/Pcs</label><input type="number" value={purchaseForm.cost_price} onChange={e=>setPurchaseForm({...purchaseForm, cost_price: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border" placeholder="Rp"/></div></div><button disabled={loading} className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl">{loading ? <Loader2 className="animate-spin mx-auto"/> : 'Simpan & Update Stok'}</button><p className="text-[10px] text-gray-400 text-center">Stok & Harga Modal akan otomatis terupdate.</p></form></div><div className="lg:col-span-2 bg-white rounded-2xl border overflow-hidden"><div className="p-4 bg-gray-50 border-b font-bold text-gray-700">Riwayat Pembelian</div><table className="w-full text-sm text-left"><thead className="bg-white border-b"><tr><th className="p-3">Tanggal</th><th className="p-3">Supplier</th><th className="p-3 text-right">Total</th></tr></thead><tbody>{purchases.map(p => (<tr key={p.id} className="border-b"><td className="p-3">{new Date(p.created_at).toLocaleDateString()}</td><td className="p-3 font-bold text-gray-700">{p.suppliers?.name}</td><td className="p-3 text-right text-emerald-600 font-bold">Rp {p.total_cost.toLocaleString()}</td></tr>))}</tbody></table></div></div>)}
             {activeTab === 'opname' && (<div className="max-w-xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-200"><div className="text-center mb-6"><div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3 text-orange-600"><ClipboardList size={24}/></div><h2 className="text-xl font-bold">Stock Opname</h2><p className="text-gray-500 text-sm">Sesuaikan stok aplikasi dengan fisik</p></div><form onSubmit={handleOpname} className="space-y-4"><div><label className="text-xs font-bold text-gray-500">Pilih Produk</label><select value={opnameForm.product_id} onChange={e=>setOpnameForm({...opnameForm, product_id: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border">{products.map(p=><option key={p.id} value={p.id}>{p.name} (Sistem: {p.stock})</option>)}</select></div><div><label className="text-xs font-bold text-gray-500">Stok Fisik (Real)</label><input type="number" value={opnameForm.actual_stock} onChange={e=>setOpnameForm({...opnameForm, actual_stock: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border font-bold text-lg" placeholder="0"/></div><div><label className="text-xs font-bold text-gray-500">Alasan Selisih</label><textarea value={opnameForm.reason} onChange={e=>setOpnameForm({...opnameForm, reason: e.target.value})} className="w-full p-3 bg-gray-50 rounded-xl border" placeholder="Contoh: Barang rusak, hilang, atau salah input sebelumnya" rows={2}></textarea></div><button disabled={loading} className="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl">{loading ? <Loader2 className="animate-spin mx-auto"/> : 'Sesuaikan Stok'}</button></form></div>)}
