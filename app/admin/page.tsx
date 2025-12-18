@@ -551,7 +551,17 @@ export default function AdminPage() {
                         </div>
                         {/* KANAN: Riwayat */}
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                            <h3 className="font-bold text-lg mb-4">Riwayat Pengeluaran</h3>
+                            {/* --- MULAI KODE BARU (HEADER + TOMBOL EXCEL) --- */}
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="font-bold text-lg">Riwayat Pengeluaran</h3>
+                                <button 
+                                    onClick={() => isPro ? handleDownloadExcel() : handleUpgradeRequest('new')} 
+                                    className={`text-xs font-bold flex items-center gap-1 ${isPro ? 'text-emerald-600 hover:underline' : 'text-gray-400 cursor-pointer'}`}
+                                >
+                                    {!isPro && <Lock size={12}/>} <Download size={14}/> Excel
+                                </button>
+                            </div>
+                            {/* --- SELESAI KODE BARU --- */}
                             <div className="max-h-80 overflow-y-auto space-y-2">
                                 {expenses.length === 0 ? <p className="text-center text-gray-400 text-xs">Belum ada data.</p> : expenses.map(exp => (
                                     <div key={exp.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
