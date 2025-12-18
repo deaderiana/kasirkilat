@@ -244,10 +244,10 @@ export default function LandingPage() {
           </div>
           <p className="text-gray-500 text-sm mb-8">© {new Date().getFullYear()} Kasir KilatQu. Hak Cipta Dilindungi.</p>
           <div className="flex justify-center gap-6 text-sm font-medium text-gray-600">
-            <a href="#" className="hover:text-emerald-600">Tentang Kami</a>
-            <a href="#" className="hover:text-emerald-600">Kebijakan Privasi</a>
-            <a href="#" className="hover:text-emerald-600">Syarat & Ketentuan</a>
-            <a href="#" className="hover:text-emerald-600">Bantuan</a>
+            <Link href="/tentang-kami" className="hover:text-emerald-400 transition">Tentang Kami</Link>
+            <Link href="/kebijakan-privasi" className="hover:text-emerald-400 transition">Kebijakan Privasi</Link>
+            <Link href="/syarat-ketentuan" className="hover:text-emerald-400 transition">Syarat & Ketentuan</Link>
+            <Link href="/bantuan" className="hover:text-emerald-400 transition">Bantuan</Link>
           </div>
         </div>
       </footer>
