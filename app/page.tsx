@@ -88,36 +88,23 @@ export default function LandingPage() {
           </Link>
         </div>
 
-        {/* Hero Image Mockup */}
+        {/* Hero Image Mockup (SUDAH DIGANTI GAMBAR ASLI) */}
         <div className="mt-16 relative mx-auto w-full max-w-4xl">
+          {/* Efek Glow Belakang */}
           <div className="absolute -inset-1 bg-gradient-to-r from-emerald-400 to-teal-400 rounded-2xl blur opacity-20"></div>
+          
+          {/* Frame Gelap */}
           <div className="relative bg-gray-900 rounded-2xl p-2 shadow-2xl border border-gray-800">
-             {/* Simple Abstract UI representation */}
-             <div className="bg-white rounded-xl overflow-hidden aspect-[16/9] flex flex-col md:flex-row">
-                <div className="w-full md:w-64 bg-gray-50 border-r p-4 hidden md:block space-y-3">
-                    <div className="h-8 bg-gray-200 rounded-lg w-3/4"></div>
-                    <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                    <div className="space-y-2 mt-6">
-                        <div className="h-10 bg-emerald-100 rounded-lg w-full"></div>
-                        <div className="h-10 bg-white border rounded-lg w-full"></div>
-                        <div className="h-10 bg-white border rounded-lg w-full"></div>
-                    </div>
-                </div>
-                <div className="flex-1 p-6 bg-white">
-                    <div className="flex justify-between mb-6">
-                        <div className="h-8 w-32 bg-gray-100 rounded-lg"></div>
-                        <div className="h-8 w-8 bg-gray-100 rounded-full"></div>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {[1,2,3,4].map(i => (
-                            <div key={i} className="aspect-square bg-gray-50 rounded-xl border border-gray-100 p-2 flex flex-col justify-end">
-                                <div className="h-4 w-2/3 bg-gray-200 rounded mb-1"></div>
-                                <div className="h-4 w-1/3 bg-emerald-200 rounded"></div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+             
+             {/* Container Gambar (Menggantikan kotak-kotak palsu) */}
+             <div className="bg-white rounded-xl overflow-hidden aspect-[16/9] relative">
+                <img 
+                  src="/hero-image.png" 
+                  alt="Tampilan Aplikasi Kasir KilatQu" 
+                  className="w-full h-full object-cover hover:scale-105 transition duration-700"
+                />
              </div>
+
           </div>
         </div>
       </section>
