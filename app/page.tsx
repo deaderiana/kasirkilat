@@ -101,7 +101,7 @@ export default function LandingPage() {
                 <img 
                   src="/hero-image.png" 
                   alt="Tampilan Aplikasi Kasir KilatQu" 
-                  className="w-full h-full object-cover hover:scale-105 transition duration-700"
+                  className="w-full h-full object-cover"
                 />
              </div>
 
